@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나의 웹 게임 모음집</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        h1 { color: #333; }
+        #searchBar { width: 100%; max-width: 400px; padding: 12px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+        #gameContainer { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; width: 100%; max-width: 800px; }
+        .game-card { background: white; padding: 15px; text-align: center; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; cursor: pointer; text-decoration: none; color: #333; font-weight: bold; }
+        .game-card:hover { transform: translateY(-5px); background-color: #eef2ff; color: #4f46e5; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>🎮 Web Game Library</h1>
+
+    <input type="text" id="searchBar" placeholder="게임 이름을 검색하세요..." onkeyup="filterGames()">
+
+    <div id="gameContainer"></div>
+
+    <script>
+        // 1. 게임 데이터 설정 (영어이름: URL용, 한글이름: 표시용)
+        const games = [
+            { en: "backroom-mini", ko: "미니 백룸" },
+            { en: "brick_breaking", ko: "벽돌깨기" },
+            { en: "cutting_fruits", ko: "과일 자르기" },
+            { en: "hell_survivor", ko: "미니 탕탕특공대" },
+            { en: "immortal_wave", ko: "불멸의 웨이브" },
+            { en: "pakur-side", ko: "옆으로 파쿠르" },
+            { en: "pakur-up", ko: "위로 파쿠르" },
+            { en: "receiving_fruits", ko: "과일 받기" }
+        ];
+
+        // 2. 영어 이름(en) 기준 알파벳 순 정렬
+        games.sort((a, b) => a.en.toLowerCase().localeCompare(b.en.toLowerCase()));
+
+        const container = document.getElementById('gameContainer');
+        const baseUrl = "https://woojik01.github.io/web_games/";
+
+        // 3. 게임 리스트 화면에 그리기
+        function displayGames() {
+            games.forEach(game => {
+                const card = document.createElement('a');
+                card.href = baseUrl + game.en;
+                card.className = 'game-card';
+                card.target = "_blank"; // 새 탭에서 열기
+                card.innerHTML = `<div>${game.ko}</div>`;
+                container.appendChild(card);
+            });
+        }
+
+        // 4. 검색 기능
+        function filterGames() {
+            const query = document.getElementById('searchBar').value.toLowerCase();
+            const cards = document.getElementsByClassName('game-card');
+
+            for (let i = 0; i < cards.length; i++) {
+                const title = cards[i].innerText.toLowerCase();
+                if (title.includes(query)) {
+                    cards[i].classList.remove('hidden');
+                } else {
+                    cards[i].classList.add('hidden');
+                }
+            }
+        }
+
+        // 초기 실행
+        displayGames();
+    </script>
+</body>
+</html>
