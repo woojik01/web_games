@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>파쿠르</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #eef5ff;
+      font-family: sans-serif;
+    }
+    #container {
+      width: 100%;
+      max-width: 400px;
+      height: 100%;
+      background: #87CEEB;
+      position: relative;
+      overflow: hidden;
+    }
+    canvas { display: block; background: #87CEEB; }
+    #ui {
+      position: absolute; top: 10px; left: 10px;
+      color: black; font-size: 18px;
+    }
+    #startScreen, #gameOverScreen {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: white; padding: 20px;
+      border-radius: 10px; text-align: center; display: none;
+    }
+    #startScreen.active, #gameOverScreen.active { display: block; }
+    #buttons {
+      position: absolute; bottom: 10px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 20px;
+    }
+    button {
+      width: 60px; height: 60px; border-radius: 50%;
+      border: none; background: #1976d2; color: white;
+      font-size: 24px;
+    }
+    .menu-btn {
+      width: auto; height: auto; border-radius: 5px;
+      padding: 10px 20px; font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="ui">Score: <span id="score">0</span></div>
+
+    <!-- 시작 화면 -->
+    <div id="startScreen" class="active">
+      <h3>위로 올라가는 파쿠르!</h3>
+      <p>← → 또는 A D로 이동,<br>스페이스/버튼으로 점프</p>
+      <button class="menu-btn" onclick="startGame()">시작</button>
+    </div>
+
+    <!-- 게임 오버 화면 -->
+    <div id="gameOverScreen">
+      <h3>게임 오버!</h3>
+      <p>Score: <span id="finalScore">0</span></p>
+      <button class="menu-btn" onclick="restartGame()">다시 시작</button>
+    </div>
+
+    <!-- 모바일 버튼 -->
+    <div id="buttons">
+      <button id="leftBtn">←</button>
+      <button id="upBtn">↑</button>
+      <button id="rightBtn">→</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let player, gravity, jumpPower, moveSpeed, platforms, coins, score, gameStarted, gameOver;
+    let keys = {};
+
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    document.getElementById("leftBtn").addEventListener("touchstart", () => keys["ArrowLeft"] = true);
+    document.getElementById("leftBtn").addEventListener("touchend", () => keys["ArrowLeft"] = false);
+    document.getElementById("rightBtn").addEventListener("touchstart", () => keys["ArrowRight"] = true);
+    document.getElementById("rightBtn").addEventListener("touchend", () => keys["ArrowRight"] = false);
+    document.getElementById("upBtn").addEventListener("touchstart", () => jump());
+
+    function initGame() {
+      player = { x: 180, y: 500, width: 20, height: 20, dx: 0, dy: 0 };
+      gravity = 0.4;
+      jumpPower = -11;
+      moveSpeed = 5;
+      platforms = [];
+      coins = [];
+      score = 0;
+      gameStarted = false;
+      gameOver = false;
+      document.getElementById("score").innerText = score;
+    }
+
+    function jump() {
+      if (player.dy === 0) player.dy = jumpPower;
+    }
+
+    function startGame() {
+      document.getElementById("startScreen").classList.remove("active");
+      initPlatforms();
+      gameStarted = true;
+      gameLoop();
+    }
+
+    function restartGame() {
+      document.getElementById("gameOverScreen").classList.remove("active");
+      initGame();
+      initPlatforms();
+      gameStarted = true;
+      gameLoop();
+    }
+
+    function initPlatforms() {
+      platforms = [];
+      platforms.push({ x: 0, y: canvas.height - 20, width: canvas.width, height: 20, type: "normal" });
+      for (let i = 1; i <= 6; i++) {
+        let x = Math.random() * (canvas.width - 60);
+        let y = canvas.height - i * 100;
+        let type = Math.random() < 0.2 ? "spring" : (Math.random() < 0.3 ? "moving" : "normal");
+        platforms.push({ x, y, width: 60, height: 10, type, dir: 1 });
+      }
+    }
+
+    function update() {
+      if (!gameStarted || gameOver) return;
+
+      if (keys["ArrowLeft"] || keys["a"]) player.x -= moveSpeed;
+      if (keys["ArrowRight"] || keys["d"]) player.x += moveSpeed;
+      if ((keys[" "] || keys["Spacebar"]) && player.dy === 0) jump();
+
+      player.dy += gravity;
+      player.y += player.dy;
+
+      // 플랫폼 충돌
+      platforms.forEach(p => {
+        if (player.x < p.x + p.width &&
+            player.x + player.width > p.x &&
+            player.y + player.height <= p.y + 10 &&
+            player.y + player.height + player.dy >= p.y) {
+          if (p.type === "spring") {
+            player.dy = jumpPower * 1.5; // 더 높이 점프
+          } else {
+            player.dy = 0;
+          }
+          player.y = p.y - player.height;
+        }
+
+        // 움직이는 플랫폼
+        if (p.type === "moving") {
+          p.x += p.dir * 1;
+          if (p.x < 0 || p.x + p.width > canvas.width) p.dir *= -1;
+        }
+      });
+
+      // 화면 넘어가면 반대쪽
+      if (player.x < -player.width) player.x = canvas.width;
+      if (player.x > canvas.width) player.x = -player.width;
+
+      // 위로 올라가면 스크롤
+      if (player.y < canvas.height / 2) {
+        let dy = (canvas.height / 2 - player.y);
+        player.y += dy;
+        platforms.forEach(p => p.y += dy);
+        coins.forEach(c => c.y += dy);
+        score += 1;
+        document.getElementById("score").innerText = score;
+      }
+
+      // 떨어지면 게임 오버
+      if (player.y > canvas.height) {
+        endGame();
+      }
+
+      updatePlatforms();
+      updateCoins();
+      checkCoinCollision();
+    }
+
+    function updatePlatforms() {
+      while (platforms.length < 10) {
+        let lastPlatform = platforms[platforms.length - 1];
+        let newY = lastPlatform.y - (50 + Math.random() * 50);
+        let newX = Math.random() * (canvas.width - 60);
+        let type = Math.random() < 0.2 ? "spring" : (Math.random() < 0.3 ? "moving" : "normal");
+        platforms.push({ x: newX, y: newY, width: 60, height: 10, type, dir: 1 });
+
+        // 일정 확률로 코인 추가
+        if (Math.random() < 0.3) {
+          coins.push({ x: newX + 20, y: newY - 20, r: 8 });
+        }
+      }
+      platforms = platforms.filter(p => p.y < canvas.height + 50);
+    }
+
+    function updateCoins() {
+      coins = coins.filter(c => c.y < canvas.height + 50);
+    }
+
+    function checkCoinCollision() {
+      coins = coins.filter(c => {
+        if (player.x < c.x + c.r &&
+            player.x + player.width > c.x - c.r &&
+            player.y < c.y + c.r &&
+            player.y + player.height > c.y - c.r) {
+          score += 50;
+          document.getElementById("score").innerText = score;
+          return false; // 코인 제거
+        }
+        return true;
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 플레이어
+      ctx.fillStyle = "red";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      // 플랫폼
+      platforms.forEach(p => {
+        if (p.type === "spring") ctx.fillStyle = "green";
+        else if (p.type === "moving") ctx.fillStyle = "blue";
+        else ctx.fillStyle = "brown";
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+      });
+
+      // 코인
+      ctx.fillStyle = "gold";
+      coins.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function gameLoop() {
+      if (!gameStarted || gameOver) return;
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+      gameOver = true;
+      document.getElementById("finalScore").innerText = score;
+      document.getElementById("gameOverScreen").classList.add("active");
+    }
+
+    initGame();
+  </script>
+</body>
+</html>

@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Backroom-mini</title>
+<style>
+  html, body { margin:0; height:100%; background:#06060a; overflow:hidden; font-family:sans-serif; }
+  canvas { display:block; width:100vw; height:100vh; background:#0f1724; touch-action:none; }
+  #hud { position:fixed; top:10px; right:10px; color:white; background:rgba(0,0,0,0.3); padding:5px 10px; border-radius:6px; z-index:10; }
+  #centerMsg { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.6); color:white; padding:20px; border-radius:10px; display:none; text-align:center; z-index:20; }
+  #joystickBase, #joystickStick {
+    position: fixed;
+    border-radius: 50%;
+    touch-action: none;
+    z-index: 20;
+  }
+  #joystickBase {
+    background: rgba(255,255,255,0.1);
+    width: 120px; height: 120px;
+    left: 60px; bottom: 60px;
+  }
+  #joystickStick {
+    background: rgba(255,255,255,0.25);
+    width: 60px; height: 60px;
+    left: 90px; bottom: 90px;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">상태: 탐색 중</div>
+<div id="centerMsg"></div>
+<div id="joystickBase"></div>
+<div id="joystickStick"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W = innerWidth, H = innerHeight;
+canvas.width = W; canvas.height = H;
+
+const TILE = 48, COLS = 36, ROWS = 26;
+const MAP_W = COLS*TILE, MAP_H = ROWS*TILE;
+let grid = [];
+
+const player = { x:0, y:0, r:14, spd:2.8, dir:0 };
+const exit = { tx:0, ty:0, x:0, y:0 };
+const enemies = [];
+const ENEMY_COUNT = 3;
+
+function genMap(){
+  grid = Array.from({length:ROWS}, ()=>Array.from({length:COLS}, ()=>0));
+  for(let x=0;x<COLS;x++){ grid[0][x]=1; grid[ROWS-1][x]=1; }
+  for(let y=0;y<ROWS;y++){ grid[y][0]=1; grid[y][COLS-1]=1; }
+  for(let y=1;y<ROWS-1;y++){
+    for(let x=1;x<COLS-1;x++){
+      if(Math.random()<0.15) grid[y][x]=1;
+    }
+  }
+}
+
+function tileToWorld(tx,ty){ return { x: tx*TILE + TILE/2, y: ty*TILE + TILE/2 }; }
+function worldToTile(x,y){ return { tx: Math.floor(x/TILE), ty: Math.floor(y/TILE) }; }
+
+function collides(x,y,r){
+  const {tx,ty}=worldToTile(x,y);
+  for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+    const nx=tx+dx, ny=ty+dy;
+    if(nx<0||ny<0||nx>=COLS||ny>=ROWS) continue;
+    if(grid[ny][nx]===1){
+      const rx=nx*TILE, ry=ny*TILE;
+      const closestX = Math.max(rx, Math.min(x, rx+TILE));
+      const closestY = Math.max(ry, Math.min(y, ry+TILE));
+      const dx0 = x - closestX, dy0 = y - closestY;
+      if(dx0*dx0 + dy0*dy0 < r*r) return true;
+    }
+  }
+  return false;
+}
+
+function safeSpawn(r){
+  for(let i=0;i<2000;i++){
+    const tx = 1 + Math.floor(Math.random()*(COLS-2));
+    const ty = 1 + Math.floor(Math.random()*(ROWS-2));
+    if(grid[ty][tx]===0){
+      const w = tileToWorld(tx,ty);
+      if(!collides(w.x,w.y,r)) return { x:w.x, y:w.y, tx, ty };
+    }
+  }
+  return { x:TILE*2, y:TILE*2, tx:2, ty:2 };
+}
+
+function spawnEnemies(n){
+  enemies.length=0;
+  for(let i=0;i<n;i++){
+    const s=safeSpawn(14);
+    enemies.push({ x:s.x, y:s.y, r:14, spd:1.5, dir:0 });
+  }
+}
+
+const keys={};
+window.addEventListener('keydown', e=>keys[e.key.toLowerCase()]=true);
+window.addEventListener('keyup', e=>keys[e.key.toLowerCase()]=false);
+
+function updateEnemies(){
+  enemies.forEach(e=>{
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    e.dir = Math.atan2(dy, dx);
+    const dist = Math.hypot(dx,dy);
+    const speed = e.spd * (dist<200?2:1);
+    const nx = e.x + Math.cos(e.dir)*speed;
+    const ny = e.y + Math.sin(e.dir)*speed;
+    if(!collides(nx,e.y,e.r)) e.x = nx;
+    if(!collides(e.x,ny,e.r)) e.y = ny;
+
+    if(dist < e.r + player.r){
+      gameOver=true;
+      hud.innerText='잡혔다...';
+      centerMsg.style.display='block';
+      centerMsg.innerHTML='<strong>당신은 잡혔습니다!</strong><br><small>탭/클릭하여 다시 시작</small>';
+    }
+  });
+}
+
+const hud = document.getElementById('hud');
+const centerMsg = document.getElementById('centerMsg');
+let gameOver=false;
+
+function resetGame(){
+  gameOver=false;
+  centerMsg.style.display='none';
+  genMap();
+  const p = safeSpawn(player.r);
+  player.x=p.x; player.y=p.y;
+  const e = safeSpawn(player.r);
+  exit.tx=e.tx; exit.ty=e.ty; exit.x=e.x; exit.y=e.y;
+  spawnEnemies(ENEMY_COUNT);
+  hud.innerText='상태: 탐색 중';
+}
+
+// 🎮 조이스틱
+const base = document.getElementById('joystickBase');
+const stick = document.getElementById('joystickStick');
+let joyActive = false, joyCenter = {x:0,y:0}, joyVec = {x:0,y:0};
+
+function setStickPos(x,y){
+  stick.style.left = (x - 30) + 'px';
+  stick.style.top  = (y - 30) + 'px';
+}
+
+base.addEventListener('touchstart', e=>{
+  const t=e.touches[0];
+  joyActive=true;
+  joyCenter={x:base.offsetLeft+60, y:base.offsetTop+60};
+  const dx=t.clientX-joyCenter.x;
+  const dy=t.clientY-joyCenter.y;
+  setStickPos(joyCenter.x+dx, joyCenter.y+dy);
+});
+
+base.addEventListener('touchmove', e=>{
+  if(!joyActive) return;
+  const t=e.touches[0];
+  let dx=t.clientX-joyCenter.x;
+  let dy=t.clientY-joyCenter.y;
+  const dist=Math.min(Math.hypot(dx,dy),60);
+  const angle=Math.atan2(dy,dx);
+  joyVec.x=Math.cos(angle)*(dist/60);
+  joyVec.y=Math.sin(angle)*(dist/60);
+  setStickPos(joyCenter.x+dx, joyCenter.y+dy);
+});
+
+base.addEventListener('touchend', ()=>{
+  joyActive=false;
+  joyVec.x=joyVec.y=0;
+  setStickPos(joyCenter.x, joyCenter.y);
+});
+
+function update(){
+  if(gameOver) return;
+
+  let mx=joyVec.x, my=joyVec.y;
+  if(keys['w']||keys['arrowup']) my=-1;
+  if(keys['s']||keys['arrowdown']) my=1;
+  if(keys['a']||keys['arrowleft']) mx=-1;
+  if(keys['d']||keys['arrowright']) mx=1;
+
+  const mag = Math.hypot(mx,my);
+  if(mag>0){ mx/=mag; my/=mag; player.dir=Math.atan2(my,mx); }
+
+  const nx = player.x + mx*player.spd;
+  const ny = player.y + my*player.spd;
+  if(!collides(nx,player.y,player.r)) player.x=nx;
+  if(!collides(player.x,ny,player.r)) player.y=ny;
+
+  const dExit = Math.hypot(player.x - exit.x, player.y - exit.y);
+  if(dExit < player.r + TILE*0.4){
+    gameOver=true;
+    hud.innerText='탈출 성공!';
+    centerMsg.style.display='block';
+    centerMsg.innerHTML='<strong>탈출 성공!</strong><br><small>탭/클릭하여 다시 시작</small>';
+  }
+
+  updateEnemies();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(W/2 - player.x, H/2 - player.y);
+
+  ctx.fillStyle='#11202b';
+  ctx.fillRect(0,0,MAP_W,MAP_H);
+
+  ctx.fillStyle='#2f3740';
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      if(grid[y][x]===1) ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+    }
+  }
+
+  ctx.fillStyle='#ffd166';
+  ctx.fillRect(exit.tx*TILE + TILE*0.15, exit.ty*TILE + TILE*0.15, TILE*0.7, TILE*0.7);
+
+  ctx.fillStyle='#33e3a1';
+  ctx.beginPath();
+  ctx.arc(player.x,player.y,player.r,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.strokeStyle='rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.moveTo(player.x,player.y);
+  ctx.lineTo(player.x+Math.cos(player.dir)*(player.r+8), player.y+Math.sin(player.dir)*(player.r+8));
+  ctx.stroke();
+
+  enemies.forEach(e=>{
+    ctx.save();
+    ctx.translate(e.x,e.y);
+    ctx.rotate(e.dir);
+    ctx.fillStyle='rgba(255,80,80,0.12)';
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.arc(0,0,e.r+50,-Math.PI/6,Math.PI/6);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle='#ff5b5b';
+    ctx.beginPath();
+    ctx.arc(e.x,e.y,e.r,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.restore();
+
+  // 💡 어두운 시야 효과
+  const grad = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,100);
+  grad.addColorStop(0,"rgba(0,0,0,0)");
+  grad.addColorStop(1,"rgba(0,0,0,0.90)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('mousedown', ()=>{ if(gameOver) resetGame(); });
+window.addEventListener('touchstart', ()=>{ if(gameOver) resetGame(); });
+
+window.addEventListener('resize', ()=>{
+  W=innerWidth; H=innerHeight;
+  canvas.width=W; canvas.height=H;
+});
+
+resetGame();
+loop();
+</script>
+</body>
+</html>

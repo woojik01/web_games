@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>pakur-side</title>
+<style>
+  :root{
+    --bg:#0b1220; --sky:#7fb6e8; --ground:#2f3740; --player:#33e3a1; --tile:#374151; --coin:#ffd166; --goal:#ff7b7b;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,Arial;color:#fff; -webkit-tap-highlight-color:transparent; touch-action:none;}
+  canvas{display:block;width:100vw;height:100vh;background:linear-gradient(#7fb6e8,#4b8ec0);}
+  .hud { position:fixed; left:12px; top:12px; z-index:60; background:rgba(0,0,0,0.35); padding:8px 10px; border-radius:8px; font-size:14px;}
+  .msg { position:fixed; left:50%; top:12px; transform:translateX(-50%); z-index:60; background:rgba(0,0,0,0.35); padding:8px 12px; border-radius:8px; font-weight:600;}
+  /* touch zones */
+  .touch-left, .touch-right {
+    position:fixed; bottom:0; top:0; width:50%; z-index:50; touch-action:none;
+  }
+  .touch-left{ left:0; }
+  .touch-right{ right:0; }
+  /* visible buttons */
+  .controls {
+    position:fixed; right:12px; bottom:12px; z-index:70; display:flex; gap:12px; align-items:center;
+  }
+  .btn {
+    width:64px; height:64px; border-radius:12px; background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.06);
+    display:flex; align-items:center; justify-content:center; font-size:22px; color:#fff; user-select:none;
+    -webkit-user-select:none; touch-action:none;
+  }
+  .small{ width:48px; height:48px; font-size:18px }
+  .center-reset{ position:fixed; left:50%; bottom:50%; transform:translateX(-50%); z-index:70; display:none; background:rgba(0,0,0,0.6); padding:12px 16px; border-radius:10px;}
+  @media (max-width:520px){ .btn{ width:56px; height:56px } .small{ width:40px; height:40px } }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="hud" id="hud">Score: 0</div>
+<div class="msg" id="msg">Stage 1</div>
+
+<!-- touch full areas (invisible) -->
+<div class="touch-left" id="touchLeft"></div>
+<div class="touch-right" id="touchRight"></div>
+
+<!-- visible controls -->
+<div class="controls">
+  <div class="btn" id="jumpBtn">⤴︎</div>
+  <div class="btn small" id="resetBtn">⟲</div>
+</div>
+
+<div class="center-reset" id="centerReset">Tap to restart</div>
+
+<script>
+/* Mobile-centered simple platformer (single file)
+   - Touch left/right by using left/right half of screen
+   - Jump button on bottom-right
+   - Coyote time + variable jump (hold to jump higher)
+   - Coins and goal, camera follow
+   - No external libs
+*/
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W = innerWidth, H = innerHeight;
+canvas.width = W; canvas.height = H;
+
+/* MAP */
+const TILE = 48;
+const COLS = 40;
+const ROWS = 14;
+const MAP_W = COLS * TILE, MAP_H = ROWS * TILE;
+let map = [];
+
+/* PLAYER */
+const player = {
+  x: TILE*2 + TILE/2,
+  y: TILE*6,
+  w: 28, h:36,
+  vx:0, vy:0,
+  speed: 260,             // horizontal accel
+  maxSpeed: 360,
+  jumpPower: 520,         // initial jump impulse
+  jumpHoldTime: 0.18,     // max extra time for variable jump
+  jumpHoldTimer: 0,
+  grounded: false,
+  coyoteTime: 0.12,
+  coyoteTimer: 0,
+  canDoubleJump: false,
+  facing: 1
+};
+
+/* CAMERA */
+const cam = { x:0, y:0 };
+
+/* PHYSICS */
+const GRAV = 1400;
+const MAX_FALL = 900;
+
+/* GAME */
+let coins = [];
+let goal = null;
+let score = 0;
+let collected = 0;
+let gameWon = false;
+
+/* UI */
+const hud = document.getElementById('hud');
+const msg = document.getElementById('msg');
+const centerReset = document.getElementById('centerReset');
+
+/* INPUT (mobile-first) */
+let input = { left:false, right:false, jump:false };
+let kb = {};
+window.addEventListener('keydown', e=>{ kb[e.key.toLowerCase()] = true; if(e.key.toLowerCase()==='r') resetGame(); });
+window.addEventListener('keyup', e=>{ kb[e.key.toLowerCase()] = false; });
+
+const touchLeft = document.getElementById('touchLeft');
+const touchRight = document.getElementById('touchRight');
+const jumpBtn = document.getElementById('jumpBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+/* helper to add touch / mouse events (prevent scroll) */
+function bindArea(el, name){
+  el.addEventListener('touchstart', e=>{ e.preventDefault(); input[name]=true; }, {passive:false});
+  el.addEventListener('touchend', e=>{ e.preventDefault(); input[name]=false; }, {passive:false});
+  el.addEventListener('mousedown', e=>{ input[name]=true; });
+  el.addEventListener('mouseup', e=>{ input[name]=false; });
+  el.addEventListener('mouseleave', e=>{ input[name]=false; });
+}
+bindArea(touchLeft,'left');
+bindArea(touchRight,'right');
+bindArea(jumpBtn,'jump');
+
+resetBtn.addEventListener('click', resetGame);
+jumpBtn.addEventListener('touchstart', e=>{ e.preventDefault(); }, {passive:false});
+
+/* MAP GENERATION */
+function genMap(){
+  map = Array.from({length:ROWS}, ()=>Array(COLS).fill(0));
+  coins = [];
+  goal = null;
+  // outer ground/ceil/walls
+  for(let x=0;x<COLS;x++){ map[ROWS-1][x] = 1; map[0][x] = 1; }
+  for(let y=0;y<ROWS;y++){ map[y][0] = 1; map[y][COLS-1] = 1; }
+
+  // random platforms
+  for(let r=2;r<ROWS-2;r++){
+    if(Math.random()<0.75){
+      const segs = 1 + Math.floor(Math.random()*3);
+      for(let s=0;s<segs;s++){
+        const w = 2 + Math.floor(Math.random()*8);
+        const x = 2 + Math.floor(Math.random()*(COLS - 6 - w));
+        for(let i=0;i<w;i++) map[r][x+i] = 1;
+        // small gaps
+        if(Math.random()<0.25){
+          const gap = 1 + Math.floor(Math.random()*3);
+          for(let g=0; g<gap; g++){
+            const gx = x + Math.floor(Math.random()*w);
+            if(gx>1 && gx<COLS-1) map[r][gx] = 0;
+          }
+        }
+      }
+    }
+  }
+
+  // pillars
+  for(let i=0;i<12;i++){
+    if(Math.random()<0.6){
+      const tx = 2 + Math.floor(Math.random()*(COLS-6));
+      const h = 1 + Math.floor(Math.random()*6);
+      for(let j=0;j<h;j++){
+        const ry = ROWS-2 - j;
+        if(ry>1) map[ry][tx] = 1;
+      }
+    }
+  }
+
+  // coins on top of platforms
+  for(let y=1;y<ROWS-1;y++){
+    for(let x=1;x<COLS-1;x++){
+      if(map[y][x]===0 && map[y+1][x]===1 && Math.random()<0.12){
+        coins.push({ x: x*TILE + TILE/2, y: y*TILE + TILE/2, r:8, taken:false });
+      }
+    }
+  }
+
+  // place player near left free tile
+  const sp = findFreeNear(2, ROWS-3);
+  player.x = sp.x; player.y = sp.y - player.h/2;
+  player.vx = 0; player.vy = 0; player.grounded=false; player.coyoteTimer=0; player.jumpHoldTimer=0;
+  // goal far right
+  let found=false;
+  for(let tx=COLS-3; tx>COLS-12 && tx>1; tx--){
+    for(let ty=2; ty<ROWS-2; ty++){
+      if(map[ty][tx]===0 && map[ty+1][tx]===1){ goal = { x: tx*TILE + TILE/2, y: ty*TILE + TILE/2, r:16 }; found=true; break; }
+    }
+    if(found) break;
+  }
+  if(!goal) goal = { x:(COLS-3)*TILE + TILE/2, y:(ROWS-3)*TILE + TILE/2, r:16 };
+  score = 0; collected=0; gameWon=false;
+  hud.innerText = `Score: ${score}`;
+  msg.innerText = 'Stage 1';
+}
+
+/* find free tile near (tx,ty) */
+function findFreeNear(tx, ty){
+  for(let r=0;r<Math.max(COLS,ROWS);r++){
+    for(let dy=-r; dy<=r; dy++){
+      for(let dx=-r; dx<=r; dx++){
+        const nx = tx + dx, ny = ty + dy;
+        if(nx>0 && ny>0 && nx<COLS-1 && ny<ROWS-1 && map[ny][nx]===0){
+          return { x: nx*TILE + TILE/2, y: ny*TILE + TILE/2 };
+        }
+      }
+    }
+  }
+  return { x: TILE*2 + TILE/2, y: TILE*4 };
+}
+
+/* collision: return tiles overlapping rect */
+function rectTiles(ax,ay,aw,ah){
+  const left = Math.floor((ax - aw/2) / TILE);
+  const right = Math.floor((ax + aw/2) / TILE);
+  const top = Math.floor((ay - ah/2) / TILE);
+  const bottom = Math.floor((ay + ah/2) / TILE);
+  const out = [];
+  for(let ty=top; ty<=bottom; ty++){
+    for(let tx=left; tx<=right; tx++){
+      if(ty>=0 && ty<ROWS && tx>=0 && tx<COLS && map[ty][tx]===1){
+        out.push({ x: tx*TILE + TILE/2, y: ty*TILE + TILE/2, w: TILE, h: TILE });
+      }
+    }
+  }
+  return out;
+}
+
+/* GAME LOOP */
+let last = performance.now();
+function update(){
+  if(gameWon) return;
+  const now = performance.now();
+  let dt = (now - last) / 1000;
+  if(dt > 0.033) dt = 0.033;
+  last = now;
+
+  // input (keyboard fallbacks)
+  const left = input.left || kb['arrowleft'] || kb['a'];
+  const right = input.right || kb['arrowright'] || kb['d'];
+  const jumpDown = input.jump || kb['w'] || kb['arrowup'] || kb[' '];
+
+  // horizontal accel
+  let target = (left? -1:0) + (right? 1:0);
+  const accel = player.speed * 8;
+  player.vx += target * accel * dt;
+  // damping
+  player.vx *= (1 - Math.min(12*dt, 0.9));
+  if(player.vx > player.maxSpeed) player.vx = player.maxSpeed;
+  if(player.vx < -player.maxSpeed) player.vx = -player.maxSpeed;
+  if(Math.abs(player.vx) > 1e-4) player.facing = player.vx > 0 ? 1 : -1;
+
+  // gravity
+  player.vy += GRAV * dt;
+  if(player.vy > MAX_FALL) player.vy = MAX_FALL;
+
+  // coyote
+  if(player.grounded) player.coyoteTimer = player.coyoteTime;
+  else player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
+
+  // jumping logic: press -> initial impulse; hold -> allow small extra upward acceleration reduction
+  if(jumpDown){
+    if(!player._jumpHeld){
+      // newly pressed
+      if(player.coyoteTimer > 0){
+        player.vy = -player.jumpPower;
+        player.grounded = false;
+        player.coyoteTimer = 0;
+        player.jumpHoldTimer = player.jumpHoldTime;
+      } else if(player.canDoubleJump){
+        player.vy = -player.jumpPower * 0.9;
+        player.canDoubleJump = false;
+        player.jumpHoldTimer = player.jumpHoldTime;
+      }
+    } else {
+      // keep holding, give limited extra lift by reducing gravity effect
+      if(player.jumpHoldTimer > 0){
+        // apply a small upward "assist" to allow variable jump height
+        player.vy -= GRAV * 0.45 * dt; // softer upward compensation
+        player.jumpHoldTimer -= dt;
+      }
+    }
+    player._jumpHeld = true;
+  } else {
+    player._jumpHeld = false;
+    player.jumpHoldTimer = 0;
+  }
+
+  // movement + collision resolution
+  const px = player.x, py = player.y;
+  let nx = px + player.vx * dt, ny = py + player.vy * dt;
+
+  // X collision
+  let coll = rectTiles(nx, py, player.w, player.h);
+  for(const t of coll){
+    const overlapX = (player.w/2 + t.w/2) - Math.abs(nx - t.x);
+    const overlapY = (player.h/2 + t.h/2) - Math.abs(py - t.y);
+    if(overlapX > 0 && overlapY > 0){
+      if(nx < t.x) nx -= overlapX; else nx += overlapX;
+      player.vx = 0;
+    }
+  }
+
+  // Y collision
+  coll = rectTiles(nx, ny, player.w, player.h);
+  player.grounded = false;
+  for(const t of coll){
+    const overlapX = (player.w/2 + t.w/2) - Math.abs(nx - t.x);
+    const overlapY = (player.h/2 + t.h/2) - Math.abs(ny - t.y);
+    if(overlapX > 0 && overlapY > 0){
+      if(ny < t.y){
+        ny -= overlapY;
+        player.vy = Math.min(0, player.vy);
+        player.grounded = true;
+        player.canDoubleJump = true;
+      } else {
+        ny += overlapY;
+        player.vy = 0;
+      }
+    }
+  }
+
+  player.x = nx; player.y = ny;
+
+  // coins
+  for(const c of coins){
+    if(c.taken) continue;
+    const d = Math.hypot(player.x - c.x, player.y - c.y);
+    if(d < c.r + Math.max(player.w, player.h)/2 - 6){
+      c.taken = true; score += 10; collected++;
+      hud.innerText = `Score: ${score}`;
+      msg.innerText = `+10 (coin)`;
+      setTimeout(()=>{ if(!gameWon) msg.innerText = 'Stage 1'; }, 900);
+    }
+  }
+
+  // goal
+  if(goal && !gameWon){
+    const d = Math.hypot(player.x - goal.x, player.y - goal.y);
+    if(d < goal.r + Math.max(player.w, player.h)/2 - 6){
+      gameWon = true;
+      hud.innerText = `Score: ${score}  — Goal!`;
+      msg.innerText = 'You reached the goal! Tap Reset to play again.';
+      centerReset.style.display = 'block';
+    }
+  }
+
+  // camera smooth follow
+  const targetCamX = Math.max(0, Math.min(MAP_W - W, player.x - W/2));
+  const targetCamY = Math.max(0, Math.min(MAP_H - H, player.y - H/2));
+  cam.x += (targetCamX - cam.x) * Math.min(12 * dt, 1);
+  cam.y += (targetCamY - cam.y) * Math.min(12 * dt, 1);
+}
+
+/* DRAW */
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(-Math.floor(cam.x), -Math.floor(cam.y));
+
+  // sky (big rect)
+  ctx.fillStyle = '#6fb0e8';
+  ctx.fillRect(cam.x, cam.y, W, H);
+
+  // tiles
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      if(map[y][x] === 1){
+        ctx.fillStyle = '#2f3740';
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.strokeRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+  }
+
+  // coins
+  for(const c of coins){
+    if(c.taken) continue;
+    ctx.fillStyle = '--'; // no-op, we'll set real color
+    ctx.beginPath();
+    ctx.fillStyle = '#ffd166';
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#b8860b';
+    ctx.fillRect(c.x-4, c.y-2, 8, 4);
+  }
+
+  // goal
+  if(goal){
+    ctx.fillStyle = '#ff8b8b';
+    ctx.beginPath(); ctx.arc(goal.x, goal.y, goal.r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('GOAL', goal.x, goal.y + 4);
+  }
+
+  // player
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.fillStyle = '#33e3a1';
+  ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
+  // eye
+  ctx.fillStyle = '#072018';
+  ctx.beginPath(); ctx.arc(6 * player.facing, -6, 4, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+/* MAIN LOOP */
+let running = true;
+function loop(){
+  if(!running) return;
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* RESET / START */
+function resetGame(){
+  gameWon = false;
+  centerReset.style.display = 'none';
+  genMap();
+  last = performance.now();
+}
+resetGame();
+loop();
+
+/* resizes */
+window.addEventListener('resize', ()=>{
+  W = innerWidth; H = innerHeight;
+  canvas.width = W; canvas.height = H;
+});
+
+/* debug hook */
+window._platformer = { player, map, coins, goal, resetGame };
+
+</script>
+</body>
+</html>

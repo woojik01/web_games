@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+  content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>불멸의 웨이브</title>
+<style>
+html, body {
+  margin:0; padding:0;
+  width:100%; height:100%;
+  overflow:hidden;
+  background:#0b0f1a;
+  touch-action:none;
+  user-select:none;
+  font-family: Arial, sans-serif;
+}
+canvas { display:block; width:100%; height:100%; }
+
+#hud {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  z-index: 10;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.2;
+  width: calc(100% - 24px);
+  pointer-events: none;
+}
+.bar {
+  width: 100%;
+  height: 12px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 6px;
+  overflow:hidden;
+  margin: 4px 0;
+}
+.fill {
+  height:100%;
+  background: #4af;
+  width:50%;
+}
+.fill.enemy { background:#f44; }
+
+#hudRow {
+  display:flex;
+  justify-content:space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.box {
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 8px;
+  border-radius: 10px;
+  width: 45%;
+}
+.small {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+#abilityOverlay {
+  position: fixed;
+  inset: 0;
+  display:none;
+  background: rgba(0,0,0,0.85);
+  z-index: 20;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  padding: 20px;
+}
+.ability {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 12px;
+  padding: 12px;
+  margin: 8px 0;
+  border: 2px solid rgba(255,255,255,0.25);
+  background: rgba(20,30,45,0.85);
+  text-align:center;
+  color: #fff;
+}
+.ability b { display:block; font-size: 18px; margin-bottom: 6px; }
+.ability .desc { font-size: 13px; opacity: 0.9; }
+.common { border-color: #aaa; }
+.rare { border-color: #4af; }
+.epic { border-color: #c4f; }
+.legendary {
+  border-color: gold;
+  box-shadow: 0 0 18px gold;
+}
+
+.joy {
+  position: fixed;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  z-index: 5;
+}
+.knob {
+  position: absolute;
+  width: 50px; height: 50px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.4);
+  left: 35px; top: 35px;
+}
+#moveJoy { left: 18px; bottom: 18px; }
+#aimJoy { right: 18px; bottom: 18px; }
+
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="hudRow">
+    <div class="box">
+      <div><b>플레이어</b></div>
+      <div class="small">HP</div>
+      <div class="bar"><div id="pFill" class="fill"></div></div>
+      <div class="small" id="pText"></div>
+    </div>
+    <div class="box">
+      <div><b>적</b></div>
+      <div class="small">HP</div>
+      <div class="bar"><div id="eFill" class="fill enemy"></div></div>
+      <div class="small" id="eText"></div>
+    </div>
+  </div>
+</div>
+
+<div id="moveJoy" class="joy"><div class="knob"></div></div>
+<div id="aimJoy" class="joy"><div class="knob"></div></div>
+
+<div id="abilityOverlay"></div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+/* ===================== 기본 스탯 ===================== */
+const BASE_FIRE_RATE = 60; // 1초
+const BASE_DAMAGE = 5;
+const BASE_ENEMY_DAMAGE = 1;
+
+let tick = 0;
+let wave = 1;
+let paused = false;
+
+/* 플레이어 */
+const player = {
+  x: 0, y: 0, r: 14,
+  hp: 100, maxHp: 100,
+  speed: 3,
+  fireRate: BASE_FIRE_RATE,
+  damage: BASE_DAMAGE,
+  pierce: false,
+  explode: false,
+  fireTrail: false,
+  healOnKill: false,
+  abilities: []
+};
+
+/* 적 */
+const enemy = {
+  x: 0, y: 0, r: 16,
+  hp: 60, maxHp: 60,
+  damage: BASE_ENEMY_DAMAGE,
+  cd: 0
+};
+
+let bullets = [];
+let enemyBullets = [];
+
+/* ===================== UI ===================== */
+const pFill = document.getElementById("pFill");
+const eFill = document.getElementById("eFill");
+const pText = document.getElementById("pText");
+const eText = document.getElementById("eText");
+
+function updateUI(){
+  pFill.style.width = (player.hp/player.maxHp*100)+"%";
+  eFill.style.width = (enemy.hp/enemy.maxHp*100)+"%";
+  pText.textContent = `HP: ${player.hp}/${player.maxHp}  |  데미지: ${player.damage}  |  연사: ${(60/player.fireRate).toFixed(2)}발/초`;
+  eText.textContent = `Wave: ${wave}  |  HP: ${enemy.hp}/${enemy.maxHp}  |  데미지: ${enemy.damage}`;
+}
+
+/* ===================== 조이스틱 ===================== */
+function joystick(el){
+  let dx=0, dy=0, active=false;
+  const knob = el.querySelector(".knob");
+  let id = null;
+
+  el.addEventListener("touchstart", e=>{
+    if(paused) return;
+    const t = e.changedTouches[0];
+    id = t.identifier;
+    active=true;
+    move(t);
+  });
+  el.addEventListener("touchmove", e=>{
+    if(paused) return;
+    if(!active) return;
+    for(const t of e.changedTouches){
+      if(t.identifier===id) move(t);
+    }
+  });
+  el.addEventListener("touchend", e=>{
+    for(const t of e.changedTouches){
+      if(t.identifier===id){
+        active=false; dx=0; dy=0; id=null;
+        knob.style.left="35px"; knob.style.top="35px";
+      }
+    }
+  });
+
+  function move(t){
+    const r = el.getBoundingClientRect();
+    dx = t.clientX - (r.left + r.width/2);
+    dy = t.clientY - (r.top + r.height/2);
+    const len = Math.hypot(dx, dy);
+    const max = 40;
+    if(len > max){
+      dx *= max/len; dy *= max/len;
+    }
+    knob.style.left = (35 + dx) + "px";
+    knob.style.top = (35 + dy) + "px";
+  }
+
+  return ()=>({dx,dy});
+}
+
+const moveJoy = joystick(document.getElementById("moveJoy"));
+const aimJoy = joystick(document.getElementById("aimJoy"));
+
+/* ===================== 능력 목록 30개 ===================== */
+const abilityPool = [
+  {name:"데미지 +2", tier:"common", apply:p=>p.damage+=2},
+  {name:"최대 HP +10", tier:"common", apply:p=>{p.maxHp+=10; p.hp+=10}},
+  {name:"이동 속도 +0.5", tier:"common", apply:p=>p.speed+=0.5},
+  {name:"연사 +10%", tier:"common", apply:p=>p.fireRate=Math.max(10, Math.floor(p.fireRate*0.9))},
+  {name:"HP 회복 +5", tier:"common", apply:p=>p.hp=Math.min(p.maxHp, p.hp+5)},
+  {name:"탄환 크기 +1", tier:"common", apply:p=>p.bulletSize=(p.bulletSize||4)+1},
+
+  {name:"관통탄", tier:"rare", apply:p=>p.pierce=true},
+  {name:"폭발탄", tier:"rare", apply:p=>p.explode=true},
+  {name:"흡혈", tier:"rare", apply:p=>p.healOnKill=true},
+  {name:"탄속 증가", tier:"rare", apply:p=>p.bulletSpeed=(p.bulletSpeed||6)+2},
+  {name:"다중탄 +1", tier:"rare", apply:p=>p.multi=(p.multi||1)+1},
+  {name:"연사 +25%", tier:"rare", apply:p=>p.fireRate=Math.max(8, Math.floor(p.fireRate*0.75))},
+
+  {name:"치명타 확률 +10%", tier:"epic", apply:p=>p.critChance=(p.critChance||0)+0.10},
+  {name:"치명타 배율 +50%", tier:"epic", apply:p=>p.critMul=(p.critMul||1.5)+0.5},
+  {name:"냉기탄(적 속도 감소)", tier:"epic", apply:p=>p.freeze=true},
+  {name:"전기탄(적에게 추가 번개)", tier:"epic", apply:p=>p.chain=true},
+  {name:"회전 탄환(탄환이 회전)", tier:"epic", apply:p=>p.spin=true},
+  {name:"방어막(데미지 20% 감소)", tier:"epic", apply:p=>p.shield=(p.shield||0)+0.2},
+
+  {name:"영웅: 독탄(지속 데미지)", tier:"legendary", apply:p=>p.poison=true},
+  {name:"영웅: 연속 사격(짧은 시간 동안 2배)", tier:"legendary", apply:p=>p.burst=true},
+  {name:"영웅: 회복 강화(킬 시 체력 20 회복)", tier:"legendary", apply:p=>p.killHeal=20},
+  {name:"영웅: 반사막(적 탄환 20% 확률 반사)", tier:"legendary", apply:p=>p.reflect=0.2},
+  {name:"영웅: 시간 정지(킬 시 짧게 느려짐)", tier:"legendary", apply:p=>p.slowOnKill=true},
+  {name:"영웅: 관통+연사+데미지 +3", tier:"legendary", apply:p=>{p.pierce=true; p.fireRate=Math.max(6, Math.floor(p.fireRate*0.7)); p.damage+=3}},
+
+  {name:"전설: 불멸자(HP 최대치 +50, 피해 30% 감소)", tier:"legendary", apply:p=>{p.maxHp+=50; p.hp+=50; p.shield=(p.shield||0)+0.3}},
+  {name:"전설: 광폭화(데미지 +10, 연사 2배)", tier:"legendary", apply:p=>{p.damage+=10; p.fireRate=Math.max(4, Math.floor(p.fireRate*0.5)); p.rage=true}},
+  {name:"전설: 폭풍탄(탄환이 분열)", tier:"legendary", apply:p=>p.split=true},
+  {name:"전설: 치유의 불꽃(지속 회복)", tier:"legendary", apply:p=>p.regen=(p.regen||0)+0.3},
+  {name:"전설: 시간의 눈(조준 시 느려짐)", tier:"legendary", apply:p=>p.aimSlow=true},
+  {name:"전설: 무한 탄창(탄환 소모 없음)", tier:"legendary", apply:p=>p.infinite=true},
+
+  {name:"전설: 에너지 폭발(킬 시 폭발)", tier:"legendary", apply:p=>p.killExplode=true},
+  {name:"전설: 마법 탄환(랜덤 버프 발동)", tier:"legendary", apply:p=>p.randomBuff=true},
+  {name:"전설: 생명력 흡수(피해의 20% 회복)", tier:"legendary", apply:p=>p.lifeSteal=0.2},
+  {name:"전설: 완전 관통(모든 적 관통)", tier:"legendary", apply:p=>p.pierce=true},
+  {name:"전설: 광선(조준 유지 시 강해짐)", tier:"legendary", apply:p=>p.charge=true},
+  {name:"전설: 무적 돌진(일정 시간 무적)", tier:"legendary", apply:p=>p.invincible=false}
+];
+
+const tierRates = {
+  common: 0.55,
+  rare: 0.28,
+  epic: 0.12,
+  legendary: 0.05
+};
+
+/* ===================== 능력 선택 ===================== */
+const overlay = document.getElementById("abilityOverlay");
+
+function chooseAbility(){
+  paused = true;
+  overlay.innerHTML = "<h2 style='color:#fff;margin-bottom:12px;'>능력 선택</h2>";
+
+  const choices = [];
+  while(choices.length < 3){
+    const r = Math.random();
+    let tier;
+    if(r < tierRates.legendary) tier="legendary";
+    else if(r < tierRates.legendary + tierRates.epic) tier="epic";
+    else if(r < tierRates.legendary + tierRates.epic + tierRates.rare) tier="rare";
+    else tier="common";
+
+    const pool = abilityPool.filter(a=>a.tier===tier);
+    const pick = pool[Math.floor(Math.random()*pool.length)];
+    if(!choices.some(c=>c.name===pick.name)) choices.push(pick);
+  }
+
+  choices.forEach(a=>{
+    const div = document.createElement("div");
+    div.className = `ability ${a.tier}`;
+    div.innerHTML = `<b>${a.name}</b><div class="desc">${a.tier.toUpperCase()}</div>`;
+    div.onclick = ()=>{
+      a.apply(player);
+      player.abilities.push(a.name);
+      overlay.style.display="none";
+      paused = false;
+
+      if(a.tier==="legendary"){
+        // 전설 연출
+        for(let i=0;i<3;i++){
+          setTimeout(()=>{ 
+            ctx.fillStyle="rgba(255,215,0,0.25)";
+            ctx.fillRect(0,0,canvas.width,canvas.height);
+          }, i*120);
+        }
+      }
+    };
+    overlay.appendChild(div);
+  });
+
+  overlay.style.display="flex";
+}
+
+/* ===================== 시너지 ===================== */
+function applySynergy(){
+  // 예시: 관통+연사 => 관통 연사 강화
+  if(player.pierce && player.fireRate < BASE_FIRE_RATE){
+    player.damage += 2;
+  }
+  // 예시: 폭발 + 화염(독) => 폭발 독 강화
+  if(player.explode && player.poison){
+    player.damage += 1;
+  }
+  // 전설 시너지 예시
+  if(player.rage && player.pierce){
+    player.fireRate = Math.max(3, Math.floor(player.fireRate*0.9));
+  }
+}
+
+/* ===================== 적 강화 ===================== */
+function scaleEnemy(){
+  wave++;
+  enemy.maxHp = Math.floor(60 + wave*20);
+  enemy.hp = enemy.maxHp;
+  enemy.damage = Math.floor(BASE_ENEMY_DAMAGE + wave*0.3);
+  enemy.x = Math.random()*canvas.width;
+  enemy.y = Math.random()*canvas.height;
+}
+
+/* ===================== 게임 루프 ===================== */
+function update(){
+  if(paused) return;
+  tick++;
+
+  const mv = moveJoy();
+  player.x += mv.dx*0.05*player.speed;
+  player.y += mv.dy*0.05*player.speed;
+  player.x = Math.max(player.r, Math.min(canvas.width-player.r, player.x));
+  player.y = Math.max(player.r, Math.min(canvas.height-player.r, player.y));
+
+  const aim = aimJoy();
+  const aimLen = Math.hypot(aim.dx, aim.dy);
+
+  // 발사
+  if(aimLen > 8 && (tick % player.fireRate === 0 || player.infinite)){
+    const baseAngle = Math.atan2(aim.dy, aim.dx);
+    const multi = player.multi || 1;
+    for(let i=0;i<multi;i++){
+      const spread = (i - (multi-1)/2) * (player.spread || 0.08);
+      const angle = baseAngle + spread;
+      bullets.push({
+        x: player.x, y: player.y,
+        vx: Math.cos(angle)*(player.bulletSpeed||6),
+        vy: Math.sin(angle)*(player.bulletSpeed||6),
+        size: player.bulletSize || 4
+      });
+    }
+  }
+
+  // 적 발사
+  enemy.cd++;
+  if(enemy.cd > 60){
+    enemy.cd = 0;
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const len = Math.hypot(dx, dy) || 1;
+    enemyBullets.push({
+      x: enemy.x, y: enemy.y,
+      vx: dx/len*3,
+      vy: dy/len*3
+    });
+  }
+
+  // 총알 이동
+  bullets.forEach((b, idx)=>{
+    b.x += b.vx;
+    b.y += b.vy;
+
+    // 적 맞음
+    if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < enemy.r){
+      let dmg = player.damage;
+
+      // 치명타
+      if(player.critChance && Math.random() < player.critChance){
+        dmg *= (player.critMul || 2);
+      }
+
+      enemy.hp -= dmg;
+
+      // 폭발
+      if(player.explode){
+        enemy.hp -= 8;
+      }
+
+      // 관통이 아니면 삭제
+      if(!player.pierce){
+        bullets.splice(idx,1);
+      }
+
+      // 킬 시 효과
+      if(enemy.hp <= 0){
+        if(player.healOnKill) player.hp = Math.min(player.maxHp, player.hp + 10);
+        if(player.killHeal) player.hp = Math.min(player.maxHp, player.hp + player.killHeal);
+        if(player.killExplode){
+          enemy.hp -= 20;
+        }
+        if(player.lifeSteal){
+          player.hp = Math.min(player.maxHp, player.hp + Math.floor(dmg*player.lifeSteal));
+        }
+        if(player.slowOnKill){
+          paused = true;
+          setTimeout(()=>paused=false, 300);
+        }
+        if(player.regen){
+          player.hp = Math.min(player.maxHp, player.hp + player.regen);
+        }
+
+        scaleEnemy();
+        applySynergy();
+        chooseAbility();
+      }
+    }
+  });
+
+  // 적 탄환 이동
+  enemyBullets.forEach((b, idx)=>{
+    b.x += b.vx;
+    b.y += b.vy;
+    if(Math.hypot(b.x-player.x, b.y-player.y) < player.r){
+      player.hp -= enemy.damage;
+      enemyBullets.splice(idx,1);
+    }
+  });
+
+  // 죽음
+  if(player.hp <= 0){
+    alert("게임 오버");
+    location.reload();
+  }
+
+  // 적 이동
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const len = Math.hypot(dx, dy) || 1;
+  enemy.x += dx/len * 1.2;
+  enemy.y += dy/len * 1.2;
+
+  updateUI();
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // 플레이어
+  ctx.fillStyle = "#4af";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI*2);
+  ctx.fill();
+
+  // 적
+  ctx.fillStyle = "#f44";
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, enemy.r, 0, Math.PI*2);
+  ctx.fill();
+
+  // 총알
+  bullets.forEach(b=>{
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(b.x, b.y, b.size, b.size);
+  });
+
+  enemyBullets.forEach(b=>{
+    ctx.fillStyle = "#ff6";
+    ctx.fillRect(b.x, b.y, 4, 4);
+  });
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+player.x = canvas.width/2;
+player.y = canvas.height/2;
+enemy.x = canvas.width/4;
+enemy.y = canvas.height/4;
+updateUI();
+chooseAbility(); // 시작 시 능력 1개 선택
+loop();
+
+</script>
+</body>
+</html>

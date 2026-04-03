@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Fruit Slice — Knife Game (One File)</title>
+<style>
+  :root{
+    --bg:#071125; --panel:rgba(0,0,0,0.45); --accent:#ffd166; --muted:#9fb0c8;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#071125,#031021);font-family:Inter,system-ui,Arial;color:#fff;overflow:hidden;-webkit-tap-highlight-color:transparent;}
+  canvas{display:block; width:100vw; height:100vh;}
+  .ui {
+    position:fixed; left:12px; right:12px; top:12px; z-index:40; display:flex; justify-content:space-between; gap:8px;
+  }
+  .panel {
+    background:var(--panel); padding:8px 10px; border-radius:10px; display:flex; align-items:center; gap:10px;
+    backdrop-filter: blur(4px);
+  }
+  .big { font-size:18px; font-weight:700; color:var(--accent); }
+  .small { font-size:13px; color:var(--muted); }
+  #centerMsg{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:50;
+    background:rgba(0,0,0,0.6); padding:16px 18px; border-radius:12px; text-align:center; display:none;
+  }
+  #startBtn, #restartBtn {
+    background:transparent; border:1px solid rgba(255,255,255,0.12); color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer;
+    font-weight:700;
+  }
+  @media (max-width:520px){
+    .big{font-size:16px}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ui">
+  <div class="panel">
+    <div class="big" id="score">Score: 0</div>
+    <div class="small" id="combo">Combo: 0</div>
+  </div>
+
+  <div class="panel">
+    <div class="small" id="lives">Lives: 3</div>
+    <button id="startBtn">Start</button>
+  </div>
+</div>
+
+<div id="centerMsg">
+  <div id="centerText">Fruit Slice</div><br/>
+  <div style="margin-top:10px">
+    <button id="restartBtn">Play</button>
+  </div>
+</div>
+
+<script>
+/*
+  Fruit Slice — single-file
+  - Touch / mouse swipe to slice fruits
+  - Bombs appear; slicing a bomb ends game
+  - Score, combo, lives
+  - Mobile optimized (touch)
+*/
+
+// Canvas & DPR
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: true });
+let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+function resize(){
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  canvas.width = Math.floor(innerWidth * DPR);
+  canvas.height = Math.floor(innerHeight * DPR);
+  canvas.style.width = innerWidth + 'px';
+  canvas.style.height = innerHeight + 'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize', resize);
+resize();
+
+// world
+const W = ()=>innerWidth;
+const H = ()=>innerHeight;
+
+// game state
+let running = false;
+let score = 0;
+let combo = 0;
+let comboTimer = 0;
+let lives = 10;
+const maxLives = 10;
+let lastSpawn = 0;
+let spawnInterval = 400; // ms, will vary
+let entities = []; // fruits & bombs
+let pieces = []; // sliced fragments
+let trails = []; // recent swipe points
+let mouseDown = false;
+let lastTime = performance.now();
+let showCenter = true;
+
+// elements
+const scoreEl = document.getElementById('score');
+const comboEl = document.getElementById('combo');
+const livesEl = document.getElementById('lives');
+const startBtn = document.getElementById('startBtn');
+const centerMsg = document.getElementById('centerMsg');
+const centerText = document.getElementById('centerText');
+const restartBtn = document.getElementById('restartBtn');
+
+startBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', startGame);
+
+// utilities
+function rand(a,b){ return a + Math.random()*(b-a); }
+function choose(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+// entity factories
+function spawnFruit(){
+  // spawn from bottom with random x, velocity up
+  const x = rand(60, W()-60);
+  const y = H() + 30;
+  const angle = rand(-Math.PI*0.5, -Math.PI*0.5);
+  const speed = rand(720, 1100) * (window.devicePixelRatio>1 ? 1.0 : 1.0);
+  const vx = Math.cos(angle)*speed;
+  const vy = Math.sin(angle)*speed;
+  const type = Math.random()<0.08 ? 'bomb' : 'fruit'; // small bomb chance
+  // choose fruit color & label
+  const fruits = [
+    {name:'Apple', color:'#ff4d4f'},
+    {name:'Orange', color:'#ff9f1c'},
+    {name:'Lime', color:'#7efc82'},
+    {name:'Grape', color:'#c77dff'},
+    {name:'Melon', color:'#61d0a6'}
+  ];
+  const meta = choose(fruits);
+  const radius = type === 'bomb' ? 20 : rand(22,34);
+  entities.push({
+    id: Math.random().toString(36).slice(2,9),
+    kind: type,
+    label: meta ? meta.name : 'Bomb',
+    color: meta ? meta.color : '#333',
+    x, y, vx, vy, r: radius, alive: true, sliced:false, rot: rand(-1,1), rotV: rand(-2,2),
+    spawnTime: performance.now()
+  });
+}
+
+// slicing detection: segment-circle intersection
+function segmentIntersectsCircle(x1,y1,x2,y2,cx,cy,r){
+  // project
+  const dx = x2 - x1, dy = y2 - y1;
+  const fx = x1 - cx, fy = y1 - cy;
+  const a = dx*dx + dy*dy;
+  const b = 2*(fx*dx + fy*dy);
+  const c = fx*fx + fy*fy - r*r;
+  let discriminant = b*b - 4*a*c;
+  if(discriminant < 0) return false;
+  discriminant = Math.sqrt(discriminant);
+  let t1 = (-b - discriminant) / (2*a);
+  let t2 = (-b + discriminant) / (2*a);
+  if((t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1)) return true;
+  return false;
+}
+
+// when sliced: spawn two pieces
+function sliceEntity(ent, segStart, segEnd){
+  if(ent.sliced) return;
+  ent.sliced = true;
+  // bomb handling
+  if(ent.kind === 'bomb'){
+    // explode -> game over
+    endGame(true);
+    // small explosion visuals
+    for(let i=0;i<24;i++){
+      const a = rand(0, Math.PI*2);
+      pieces.push({
+        x: ent.x, y: ent.y,
+        vx: Math.cos(a)*rand(120,480), vy: Math.sin(a)*rand(120,480),
+        life: rand(0.6,1.2), size: rand(3,6), color:'#ffdd66', alpha:1, rot: rand(-4,4)
+      });
+    }
+    return;
+  }
+
+  // increment score & combo
+  score += 10 * (1 + Math.floor(combo/3));
+  combo++;
+  comboTimer = 1.0; // seconds to keep combo
+  scoreEl.innerText = 'Score: ' + score;
+  comboEl.innerText = 'Combo: ' + combo;
+
+  // create two half-pieces (visual) + juicy sparks
+  const nx = (segEnd.x - segStart.x), ny = (segEnd.y - segStart.y);
+  const normal = { x: -ny, y: nx }; // perpendicular
+  const len = Math.hypot(normal.x, normal.y) || 1;
+  normal.x /= len; normal.y /= len;
+
+  const speedBase = 250;
+  for(let s=0;s<2;s++){
+    const side = s===0 ? 1 : -1;
+    pieces.push({
+      x: ent.x + normal.x*side*6,
+      y: ent.y + normal.y*side*6,
+      vx: ent.vx*0.2 + normal.x*side*rand(40,220) + rand(-80,80),
+      vy: ent.vy*0.2 + normal.y*side*rand(40,220) + rand(-120,0),
+      life: rand(0.9,1.8),
+      size: ent.r*0.9,
+      color: ent.color,
+      alpha:1,
+      rot: rand(-4,4),
+      spin: rand(-6,6)
+    });
+  }
+  // spawn juice particles (small)
+  const juiceCount = 10 + Math.floor(Math.random()*14);
+  for(let i=0;i<juiceCount;i++){
+    const a = rand(0,Math.PI*2);
+    const sp = rand(120,680);
+    pieces.push({
+      x: ent.x, y: ent.y,
+      vx: Math.cos(a)*sp*0.01,
+      vy: Math.sin(a)*sp*0.01 - rand(0,120),
+      life: rand(0.5,1.2),
+      size: rand(2,6),
+      color: ent.color,
+      alpha:1,
+      rot:0,
+      spin:0
+    });
+  }
+}
+
+// update loop
+function update(dt){
+  // spawn logic
+  lastSpawn += dt*1000;
+  if(lastSpawn > spawnInterval){
+    lastSpawn = 0;
+    // spawn a burst of 1..3 fruits
+    const count = Math.random() < 0.2 ? 3 : 1 + (Math.random()<0.15?1:0);
+    for(let i=0;i<count;i++){
+      spawnFruit();
+    }
+    // slightly reduce spawnInterval with score
+    spawnInterval = 700 - Math.min(450, Math.floor(score/40)*10) + rand(-120,120);
+    spawnInterval = Math.max(380, spawnInterval);
+  }
+
+  // update entities
+  for(let i=entities.length-1;i>=0;i--){
+    const e = entities[i];
+    // physics
+    e.vy += 700 * dt; // gravity
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    e.vx *= 0.999;
+    e.rot += e.rotV * dt;
+
+    // off-screen bottom: if fruit missed, lose life
+    if(e.y - e.r > H() + 80){
+      if(!e.sliced && e.kind === 'fruit'){
+        lives = Math.max(0, lives-1);
+        livesEl.innerText = 'Lives: ' + lives;
+        combo = 0;
+        comboEl.innerText = 'Combo: 0';
+        if(lives <= 0) endGame(false);
+      }
+      entities.splice(i,1);
+      continue;
+    }
+
+    // draw handled elsewhere
+  }
+
+  // update pieces
+  for(let i=pieces.length-1;i>=0;i--){
+    const p = pieces[i];
+    p.vy += 900 * dt;
+    p.vx *= 0.995;
+    p.vy *= 0.995;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    p.alpha = Math.max(0, p.life / 1.6);
+    if(p.life <= 0) pieces.splice(i,1);
+  }
+
+  // trails decay
+  for(let i=trails.length-1;i>=0;i--){
+    trails[i].life -= dt;
+    if(trails[i].life <= 0) trails.splice(i,1);
+  }
+
+  // combo timer
+  if(comboTimer > 0){
+    comboTimer -= dt;
+    if(comboTimer <= 0){
+      comboTimer = 0;
+      combo = 0;
+      comboEl.innerText = 'Combo: 0';
+    }
+  }
+
+  // slicing detection: if we have enough trail points, check segments
+  if(trails.length >= 2){
+    // build segments from last N points
+    for(let s = 0; s < trails.length - 1; s++){
+      const a = trails[s], b = trails[s+1];
+      // ignore tiny segments
+      if(Math.hypot(b.x - a.x, b.y - a.y) < 6) continue;
+      // test each entity
+      for(let j=entities.length-1;j>=0;j--){
+        const ent = entities[j];
+        if(ent.sliced) continue;
+        if(segmentIntersectsCircle(a.x,a.y,b.x,b.y, ent.x, ent.y, ent.r)){
+          // slice detected
+          sliceEntity(ent, a, b);
+        }
+      }
+    }
+  }
+
+  // remove sliced entities
+  for(let i=entities.length-1;i>=0;i--){
+    if(entities[i].sliced) entities.splice(i,1);
+  }
+}
+
+// draw loop
+function draw(){
+  // clear
+  ctx.clearRect(0,0,W(),H());
+  // slight vignette background
+  const g = ctx.createLinearGradient(0,0,0,H());
+  g.addColorStop(0, '#071125');
+  g.addColorStop(0.5, '#031025');
+  g.addColorStop(1, '#020411');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W(),H());
+
+  // draw pieces (behind fruits for depth)
+  for(const p of pieces){
+    // glow
+    ctx.globalAlpha = Math.min(1, p.alpha*1.2);
+    const grd = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size*3);
+    grd.addColorStop(0, p.color);
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y, p.size*3,0,Math.PI*2);
+    ctx.fill();
+
+    // core
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y, p.size,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // draw fruits & bombs
+  for(const e of entities){
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(e.rot);
+    if(e.kind === 'bomb'){
+      // bomb body
+      ctx.fillStyle = '#222';
+      ctx.beginPath();
+      ctx.arc(0,0,e.r,0,Math.PI*2);
+      ctx.fill();
+      // fuse
+      ctx.fillStyle = '#ffa94d';
+      ctx.fillRect(-2 - e.r*0.2, -e.r - 6, 4, 8);
+      // X mark
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-e.r*0.5, -e.r*0.2); ctx.lineTo(e.r*0.5, e.r*0.2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(e.r*0.5, -e.r*0.2); ctx.lineTo(-e.r*0.5, e.r*0.2); ctx.stroke();
+    } else {
+      // fruit circle with slight shading
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      ctx.ellipse(0,0,e.r, e.r*0.92, 0, 0, Math.PI*2);
+      ctx.fill();
+      // shine
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(-e.r*0.3, -e.r*0.45, e.r*0.25, e.r*0.14, 0, 0, Math.PI*2);
+      ctx.fill();
+      // small stem
+      ctx.fillStyle = '#2b2b2b';
+      ctx.fillRect(-2, -e.r - 4, 4, 6);
+    }
+    ctx.restore();
+  }
+
+  // draw trails (swipe) - thick, translucent
+  for(let i=0;i<trails.length-1;i++){
+    const a=trails[i], b=trails[i+1];
+    const alpha = Math.max(0, Math.min(1, trails[i].life/0.35));
+    ctx.strokeStyle = `rgba(255,255,255,${0.06*alpha})`;
+    ctx.lineWidth = 24 * alpha;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255,255,255,${0.18*alpha})`;
+    ctx.lineWidth = 6 * alpha;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+
+  // HUD handled in DOM
+
+  // if center message visible, render shadowed text optionally (DOM handles)
+}
+
+// main loop
+function loop(ts){
+  const now = ts || performance.now();
+  const dt = Math.min(0.033, (now - lastTime)/1000);
+  lastTime = now;
+  if(running){
+    update(dt);
+    draw();
+  } else {
+    // subtle idle animation
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// input handling (touch + mouse)
+function addSwipePoint(x,y){
+  trails.push({ x, y, life: 0.35 });
+  // keep limited length
+  if(trails.length > 18) trails.shift();
+  // haptic
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+canvas.addEventListener('touchstart', function(e){
+  e.preventDefault();
+  const t = e.touches[0];
+  addSwipePoint(t.clientX, t.clientY);
+  mouseDown = true;
+});
+canvas.addEventListener('touchmove', function(e){
+  e.preventDefault();
+  const t = e.touches[0];
+  addSwipePoint(t.clientX, t.clientY);
+});
+canvas.addEventListener('touchend', function(e){
+  mouseDown = false;
+  trails.length = 0;
+});
+canvas.addEventListener('mousedown', function(e){
+  addSwipePoint(e.clientX, e.clientY);
+  mouseDown = true;
+});
+canvas.addEventListener('mousemove', function(e){
+  if(!mouseDown) return;
+  addSwipePoint(e.clientX, e.clientY);
+});
+canvas.addEventListener('mouseup', function(e){
+  mouseDown = false;
+  trails.length = 0;
+});
+
+// game control
+function startGame(){
+  // reset
+  running = true;
+  showCenter = false;
+  centerMsg.style.display = 'none';
+  score = 0; combo = 0; comboTimer = 0; lives = maxLives;
+  entities.length = 0; pieces.length = 0; trails.length = 0;
+  scoreEl.innerText = 'Score: 0';
+  comboEl.innerText = 'Combo: 0';
+  livesEl.innerText = 'Lives: ' + lives;
+  lastSpawn = 0;
+  spawnInterval = 800;
+  lastTime = performance.now();
+  // initial burst
+  for(let i=0;i<5;i++){
+    setTimeout(()=> spawnFruit(), i*160);
+  }
+}
+
+function endGame(hitBomb){
+  running = false;
+  // show center message
+  centerText.innerHTML = hitBomb ? '폭탄에 맞았다!<br/>최종점수: ' + score : '게임오버<br/>최종점수: ' + score;
+  centerMsg.style.display = 'block';
+  showCenter = true;
+  // small explosion if bomb
+  if(hitBomb && navigator.vibrate) navigator.vibrate([80,60,80]);
+}
+
+// expose debug
+window._fruitSlice = { startGame, endGame, spawnFruit, entities, pieces };
+
+</script>
+</body>
+</html>
