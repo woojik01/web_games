@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>바둑</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>오목</title>
 <style>
 :root{
   --bg:#f6f1e7; --text:#1c1a16; --card:#ffffffd0; --board:#d7a65e; --line:#3a250e;
   --accent:#0b7a5c; --accent-2:#e8dcc6; --shadow:0 8px 24px rgba(0,0,0,.12);
+  --danger:#c0392b;
 }
 @media (prefers-color-scheme:dark){
-  :root{ --bg:#0b0e12; --text:#e9e3d6; --card:#141a20cc; --board:#976d3b; --line:#f0d8a8; --accent:#31c6a0; --accent-2:#1e2a2a; --shadow:0 8px 24px rgba(0,0,0,.5);}
+  :root{
+    --bg:#0b0e12; --text:#e9e3d6; --card:#141a20cc; --board:#976d3b; --line:#f0d8a8;
+    --accent:#31c6a0; --accent-2:#1e2a2a; --shadow:0 8px 24px rgba(0,0,0,.5); --danger:#ff6b5c;
+  }
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -25,7 +29,7 @@ header{
   display:flex; align-items:center; justify-content:space-between; padding:12px 14px;
 }
 h1{margin:0; font-size:22px; letter-spacing:.5px; font-weight:800}
-.board-size{display:flex; gap:6px}
+.board-size{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end}
 .size-btn{
   padding:7px 10px; border:0; border-radius:10px; background:var(--card); color:var(--text);
   box-shadow:var(--shadow); font-weight:700; font-size:14px;
@@ -46,7 +50,7 @@ main{max-width:560px; margin:0 auto; padding:10px 12px 80px}
   background:var(--card); padding:10px; border-radius:14px; margin:6px 0 8px; box-shadow:var(--shadow);
   flex-wrap:wrap;
 }
-.ai-panel .group{display:flex; gap:6px; align-items:center}
+.ai-panel .group{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
 .pill{padding:8px 12px; border-radius:999px; border:0; background:var(--accent-2); font-weight:700}
 .pill.active{background:var(--accent); color:#fff}
 select.pill{appearance:none; padding-right:28px}
@@ -54,11 +58,12 @@ select.pill{appearance:none; padding-right:28px}
 .info-bar{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   background:var(--card); padding:10px 12px; border-radius:14px; box-shadow:var(--shadow); margin:8px 0;
+  flex-wrap:wrap;
 }
 #turn-indicator{font-weight:900; font-size:16px}
 #ai-thinking{font-size:13px; color:var(--accent); font-weight:700; animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
-.prisoners{display:flex; gap:10px; font-size:13px; opacity:.9}
+.prisoners{display:flex; gap:10px; font-size:13px; opacity:.9; flex-wrap:wrap}
 .prisoners b{font-weight:800}
 
 .estimate{
@@ -88,7 +93,7 @@ select.pill{appearance:none; padding-right:28px}
   padding:13px; border:0; border-radius:14px; background:var(--card); font-weight:800; font-size:15px; box-shadow:var(--shadow); color:var(--text);
 }
 .controls label{
-  grid-column:1/-1; display:flex; gap:16px; justify-content:center; align-items:center; margin-top:2px; font-size:14px; opacity:.9
+  grid-column:1/-1; display:flex; gap:16px; justify-content:center; align-items:center; margin-top:2px; font-size:14px; opacity:.9; flex-wrap:wrap
 }
 input[type=checkbox]{width:18px; height:18px}
 
@@ -106,27 +111,36 @@ input[type=checkbox]{width:18px; height:18px}
 .intro-card button{
   margin-top:10px; width:100%; padding:14px; border:0; border-radius:14px; background:var(--accent); color:white; font-weight:900; font-size:16px;
 }
+.small-note{font-size:12px; opacity:.78; margin-top:8px; line-height:1.5}
+
+@media (max-width:420px){
+  h1{font-size:20px}
+  .mode-selector button,.controls button{font-size:14px}
+  .info-bar{justify-content:flex-start}
+}
 </style>
 </head>
 <body>
 <div id="intro">
   <div class="intro-card">
-    <h2>바둑</h2>
-    <p>손끝에서 즐기는 9·13·19로</p>
+    <h2>오목</h2>
+    <p>손끝에서 즐기는 9·13·15·19로</p>
     <ul>
-      <li>활로·따내기·패·자살수 완벽 구현</li>
+      <li>가로·세로·대각선 5목 완성 시 승리</li>
       <li>사람 vs 사람, 사람 vs AI</li>
       <li>착수표시·좌표·무르기 지원</li>
     </ul>
     <button id="start-btn">시작하기</button>
+    <div class="small-note">참고: 기본 규칙은 자유 오목 기준으로 구현</div>
   </div>
 </div>
 
 <header>
-  <h1>바둑</h1>
+  <h1>오목</h1>
   <div class="board-size">
     <button class="size-btn active" data-size="9">9×9</button>
     <button class="size-btn" data-size="13">13×13</button>
+    <button class="size-btn" data-size="15">15×15</button>
     <button class="size-btn" data-size="19">19×19</button>
   </div>
 </header>
@@ -157,8 +171,8 @@ input[type=checkbox]{width:18px; height:18px}
     <div id="turn-indicator">흑 차례</div>
     <div id="ai-thinking" style="display:none">AI 생각 중...</div>
     <div class="prisoners">
-      <span>흑 잡은돌: <b id="black-captures">0</b></span>
-      <span>백 잡은돌: <b id="white-captures">0</b></span>
+      <span>흑 연속수: <b id="black-count">0</b></span>
+      <span>백 연속수: <b id="white-count">0</b></span>
     </div>
   </div>
 
@@ -171,9 +185,9 @@ input[type=checkbox]{width:18px; height:18px}
   </div>
 
   <div class="controls">
-    <button id="pass-btn">패스</button>
     <button id="undo-btn">무르기</button>
     <button id="newgame-btn">새 게임</button>
+    <button id="reset-btn">초기화</button>
     <label>
       <span><input type="checkbox" id="show-last" checked> 착수표시</span>
       <span><input type="checkbox" id="show-coords" checked> 좌표표시</span>
@@ -182,272 +196,540 @@ input[type=checkbox]{width:18px; height:18px}
 </main>
 
 <script>
-const $=s=>document.getElementById(s);
-const boardCanvas=$('board-canvas'), stonesLayer=$('stones-layer'), markersLayer=$('markers-layer'), boardWrap=$('board-wrap');
-let ctx=boardCanvas.getContext('2d');
+const $ = s => document.getElementById(s);
+const boardCanvas = $('board-canvas');
+const stonesLayer = $('stones-layer');
+const markersLayer = $('markers-layer');
+const boardWrap = $('board-wrap');
+let ctx = boardCanvas.getContext('2d');
 
-let size=9, board=[], turn=1, captures={1:0,2:0}, ko=null, lastMove=null, history=[], consecutivePasses=0, gameOver=false;
-let mode='pvp', playerColor=1, aiColor=2, difficulty='medium';
-let showLast=true, showCoords=true, cellSize=0, margin=0, aiThinking=false;
+let size = 9;
+let board = [];
+let turn = 1;
+let lastMove = null;
+let history = [];
+let gameOver = false;
+let mode = 'pvp';
+let playerColor = 1;
+let aiColor = 2;
+let difficulty = 'medium';
+let showLast = true;
+let showCoords = true;
+let cellSize = 0;
+let margin = 0;
+let aiThinking = false;
+let winLine = null;
 let audioCtx;
 
-const neighbors=(x,y)=>[[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+const neighbors = (x, y) => [[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+const dirs = [[1,0],[0,1],[1,1],[1,-1]];
 
-function clone(b){return b.map(r=>r.slice())}
-function inBoard(x,y){return x>=0 && y>=0 && x<size && y<size}
+function clone(b){ return b.map(r => r.slice()); }
+function inBoard(x,y){ return x >= 0 && y >= 0 && x < size && y < size; }
 
-function getGroup(x,y,b=board){
-  const color=b[y][x]; if(!color) return null;
-  const seen=new Set(), stones=[], libs=new Set(), stack=[[x,y]];
-  while(stack.length){
-    const [cx,cy]=stack.pop(); const k=cx+','+cy; if(seen.has(k)) continue; seen.add(k); stones.push({x:cx,y:cy});
-    for(const [nx,ny] of neighbors(cx,cy)){ if(!inBoard(nx,ny)) continue; const c=b[ny][nx];
-      if(c===0) libs.add(nx+','+ny); else if(c===color && !seen.has(nx+','+ny)) stack.push([nx,ny]);
-    }
-  }
-  return {stones, liberties:libs.size, libs}
-}
-
-function isLegalMove(x,y,color){
-  if(!inBoard(x,y) || board[y][x]!==0) return false;
-  if(ko && ko.x===x && ko.y===y) return false;
-  const tmp=clone(board); tmp[y][x]=color; const opp=3-color; let captured=[];
-  for(const [nx,ny] of neighbors(x,y)){ if(!inBoard(nx,ny) || tmp[ny][nx]!==opp) continue;
-    const g=getGroup(nx,ny,tmp); if(g.liberties===0){ captured.push(...g.stones); for(const s of g.stones) tmp[s.y][s.x]=0; }
-  }
-  const own=getGroup(x,y,tmp); if(own.liberties===0) return false;
-  return {captured, own, tmp}
-}
-
-function playSound(){
+function playSound(color){
   try{
-    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-    const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination);
-    o.type='triangle'; o.frequency.value = lastMove?.color===1 ? 380 : 520;
-    g.gain.setValueAtTime(0.0001,audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.22,audioCtx.currentTime+0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.09);
-    o.start(); o.stop(audioCtx.currentTime+0.1);
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = 'triangle';
+    o.frequency.value = color === 1 ? 360 : 520;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.09);
+    o.start(); o.stop(audioCtx.currentTime + 0.1);
   }catch{}
 }
 
+function saveHistory(){
+  history.push({
+    board: clone(board),
+    turn,
+    lastMove: lastMove ? {...lastMove} : null,
+    gameOver,
+    winLine: winLine ? {...winLine} : null
+  });
+}
+
 function drawBoard(){
-  const rect=boardWrap.getBoundingClientRect(); const s=Math.min(rect.width, rect.width);
-  const dpr=window.devicePixelRatio||1;
-  boardCanvas.width=s*dpr; boardCanvas.height=s*dpr; boardCanvas.style.width=s+'px'; boardCanvas.style.height=s+'px';
-  ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr);
+  const rect = boardWrap.getBoundingClientRect();
+  const s = Math.round(Math.min(rect.width, rect.height));
+  const dpr = window.devicePixelRatio || 1;
+  boardCanvas.width = s * dpr;
+  boardCanvas.height = s * dpr;
+  boardCanvas.style.width = s + 'px';
+  boardCanvas.style.height = s + 'px';
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(dpr, dpr);
   ctx.clearRect(0,0,s,s);
 
-  margin = showCoords ? Math.max(24, s*0.08) : s*0.055;
-  cellSize = (s - margin*2)/(size-1);
+  const cs = getComputedStyle(document.documentElement);
+  const boardColor = cs.getPropertyValue('--board').trim();
+  const lineColor = cs.getPropertyValue('--line').trim();
 
-  // wood
-  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--board');
+  ctx.fillStyle = boardColor;
   ctx.fillRect(0,0,s,s);
-  ctx.globalAlpha=0.07;
-  for(let i=0;i<70;i++){ ctx.beginPath(); ctx.moveTo(0,Math.random()*s); ctx.lineTo(s,Math.random()*s); ctx.strokeStyle='#000'; ctx.lineWidth=1; ctx.stroke(); }
-  ctx.globalAlpha=1;
 
-  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--line');
-  ctx.lineWidth=1; ctx.lineCap='round';
-  for(let i=0;i<size;i++){
-    const p=Math.round(margin + i*cellSize)+0.5;
-    ctx.beginPath(); ctx.moveTo(margin, p); ctx.lineTo(s-margin, p); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p, margin); ctx.lineTo(p, s-margin); ctx.stroke();
+  ctx.globalAlpha = 0.07;
+  for(let i=0;i<60;i++){
+    ctx.beginPath();
+    ctx.moveTo(0, Math.random()*s);
+    ctx.lineTo(s, Math.random()*s);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
-  // hoshi
-  const hoshi = size===9?[[2,2],[2,6],[6,2],[6,6],[4,4]]: size===13?[[3,3],[3,9],[9,3],[9,9],[6,6],[3,6],[9,6],[6,3],[6,9]]:[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15],[3,9],[9,3]].slice(0,9);
-  ctx.fillStyle=ctx.strokeStyle;
-  hoshi.forEach(([x,y])=>{ const cx=margin+x*cellSize, cy=margin+y*cellSize; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2,cellSize*0.09),0,Math.PI*2); ctx.fill(); });
+  ctx.globalAlpha = 1;
+
+  margin = showCoords ? Math.max(24, s * 0.08) : s * 0.055;
+  cellSize = (s - margin * 2) / (size - 1);
+
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'round';
+  for(let i=0;i<size;i++){
+    const p = Math.round(margin + i * cellSize) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(margin, p);
+    ctx.lineTo(s - margin, p);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(p, margin);
+    ctx.lineTo(p, s - margin);
+    ctx.stroke();
+  }
+
+  const hoshi = size === 9
+    ? [[2,2],[2,6],[6,2],[6,6],[4,4]]
+    : size === 13
+      ? [[3,3],[3,9],[9,3],[9,9],[6,6]]
+      : size === 15
+        ? [[3,3],[3,11],[11,3],[11,11],[7,7]]
+        : [[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]];
+
+  ctx.fillStyle = lineColor;
+  hoshi.forEach(([x,y]) => {
+    if(x >= size || y >= size) return;
+    const cx = margin + x * cellSize;
+    const cy = margin + y * cellSize;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(2, cellSize * 0.09), 0, Math.PI * 2);
+    ctx.fill();
+  });
 
   if(showCoords){
-    ctx.fillStyle=getComputedStyle(document.body).color; ctx.globalAlpha=0.85;
-    ctx.font=`${Math.max(11, cellSize*0.28)}px system-ui`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle = getComputedStyle(document.body).color;
+    ctx.globalAlpha = 0.85;
+    ctx.font = `${Math.max(11, cellSize * 0.28)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     for(let i=0;i<size;i++){
-      const p=margin+i*cellSize;
-      const lab=(i+1).toString();
-      ctx.fillText(lab, p, margin*0.5);
-      ctx.fillText(lab, p, s - margin*0.5);
-      const lab2=(size-i).toString();
-      ctx.fillText(lab2, margin*0.5, p);
-      ctx.fillText(lab2, s - margin*0.5, p);
+      const p = margin + i * cellSize;
+      const lab = (i+1).toString();
+      const lab2 = (size - i).toString();
+      ctx.fillText(lab, p, margin * 0.5);
+      ctx.fillText(lab, p, s - margin * 0.5);
+      ctx.fillText(lab2, margin * 0.5, p);
+      ctx.fillText(lab2, s - margin * 0.5, p);
     }
-    ctx.globalAlpha=1;
+    ctx.globalAlpha = 1;
+  }
+
+  if(winLine){
+    ctx.save();
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim();
+    ctx.lineWidth = Math.max(4, cellSize * 0.16);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(margin + winLine.x1 * cellSize, margin + winLine.y1 * cellSize);
+    ctx.lineTo(margin + winLine.x2 * cellSize, margin + winLine.y2 * cellSize);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
 function renderStones(){
-  stonesLayer.innerHTML=''; markersLayer.innerHTML='';
-  const stoneSize=cellSize*0.92;
-  for(let y=0;y<size;y++) for(let x=0;x<size;x++) if(board[y][x]){
-    const d=document.createElement('div');
-    d.className='stone '+(board[y][x]===1?'black':'white');
-    d.style.left=(margin + x*cellSize)+'px';
-    d.style.top=(margin + y*cellSize)+'px';
-    d.style.width=d.style.height=stoneSize+'px';
-    stonesLayer.appendChild(d);
-    requestAnimationFrame(()=>d.classList.add('placed'));
+  stonesLayer.innerHTML = '';
+  markersLayer.innerHTML = '';
+  const stoneSize = cellSize * 0.92;
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(!board[y][x]) continue;
+      const d = document.createElement('div');
+      d.className = 'stone ' + (board[y][x] === 1 ? 'black' : 'white');
+      d.style.left = (margin + x * cellSize) + 'px';
+      d.style.top = (margin + y * cellSize) + 'px';
+      d.style.width = d.style.height = stoneSize + 'px';
+      stonesLayer.appendChild(d);
+      requestAnimationFrame(() => d.classList.add('placed'));
+    }
   }
   if(lastMove && showLast){
-    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('cx', margin + lastMove.x*cellSize);
-    c.setAttribute('cy', margin + lastMove.y*cellSize);
-    c.setAttribute('r', cellSize*0.13);
-    c.setAttribute('fill', lastMove.color===1?'#fff':'#000');
-    c.setAttribute('stroke', lastMove.color===1?'#000':'#fff');
-    c.setAttribute('stroke-width','2'); c.setAttribute('opacity','0.9');
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', margin + lastMove.x * cellSize);
+    c.setAttribute('cy', margin + lastMove.y * cellSize);
+    c.setAttribute('r', cellSize * 0.13);
+    c.setAttribute('fill', lastMove.color === 1 ? '#fff' : '#000');
+    c.setAttribute('stroke', lastMove.color === 1 ? '#000' : '#fff');
+    c.setAttribute('stroke-width', '2');
+    c.setAttribute('opacity', '0.9');
     markersLayer.appendChild(c);
   }
 }
 
 function updateUI(){
-  $('turn-indicator').textContent = gameOver ? '종료' : (turn===1?'흑 차례':'백 차례');
-  $('black-captures').textContent=captures[1];
-  $('white-captures').textContent=captures[2];
-  const sc=estimateScore(); $('estimate').textContent = `형세 추정 · 흑 ${sc.black.toFixed(0)} : 백 ${sc.white.toFixed(1)} (코미 6.5)`;
-}
-
-function estimateScore(){
-  let bs=0, ws=0;
-  for(let y=0;y<size;y++) for(let x=0;x<size;x++){ if(board[y][x]===1) bs++; else if(board[y][x]===2) ws++; }
-  const vis=Array.from({length:size},()=>Array(size).fill(false)); let bt=0, wt=0;
-  for(let y=0;y<size;y++) for(let x=0;x<size;x++) if(board[y][x]===0 && !vis[y][x]){
-    const q=[[x,y]]; vis[y][x]=true; let area=0, borders=new Set();
-    while(q.length){ const [cx,cy]=q.pop(); area++; for(const [nx,ny] of neighbors(cx,cy)){ if(!inBoard(nx,ny)) continue; const c=board[ny][nx]; if(c===0 && !vis[ny][nx]){vis[ny][nx]=true; q.push([nx,ny]);} else if(c===1) borders.add(1); else if(c===2) borders.add(2);} }
-    if(borders.size===1){ if(borders.has(1)) bt+=area; else wt+=area; }
+  $('turn-indicator').textContent = gameOver ? '종료' : (turn === 1 ? '흑 차례' : '백 차례');
+  $('black-count').textContent = getLongestLine(1).max;
+  $('white-count').textContent = getLongestLine(2).max;
+  if(gameOver){
+    const winner = lastMove ? (lastMove.color === 1 ? '흑' : '백') : '무승부';
+    $('estimate').innerHTML = `<strong>게임 종료</strong> · ${winner} 승리`;
+  }else{
+    const est = estimatePosition();
+    $('estimate').textContent = `형세 추정 · 흑 ${est.black.toFixed(0)} : 백 ${est.white.toFixed(0)}`;
   }
-  return {black: bs+bt, white: ws+wt+6.5}
 }
 
-function saveHistory(){
-  history.push({board:clone(board), captures:{...captures}, ko:ko?{...ko}:null, turn, lastMove:lastMove?{...lastMove}:null, consecutivePasses});
+function getLongestLine(color){
+  let max = 0;
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(board[y][x] !== color) continue;
+      for(const [dx,dy] of dirs){
+        let len = 1;
+        let nx = x + dx, ny = y + dy;
+        while(inBoard(nx,ny) && board[ny][nx] === color){ len++; nx += dx; ny += dy; }
+        if(len > max) max = len;
+      }
+    }
+  }
+  return {max};
 }
 
-function makeMove(x,y,isPass=false){
+function checkWinFrom(x,y,color){
+  for(const [dx,dy] of dirs){
+    let stones = [{x,y}];
+    let nx = x + dx, ny = y + dy;
+    while(inBoard(nx,ny) && board[ny][nx] === color){
+      stones.push({x:nx,y:ny});
+      nx += dx; ny += dy;
+    }
+    nx = x - dx; ny = y - dy;
+    while(inBoard(nx,ny) && board[ny][nx] === color){
+      stones.unshift({x:nx,y:ny});
+      nx -= dx; ny -= dy;
+    }
+    if(stones.length >= 5){
+      return {x1: stones[0].x, y1: stones[0].y, x2: stones[4].x, y2: stones[4].y};
+    }
+  }
+  return null;
+}
+
+function estimatePosition(){
+  let black = 0, white = 0;
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      const c = board[y][x];
+      if(c === 1) black += 1;
+      else if(c === 2) white += 1;
+    }
+  }
+  const bonus = (color) => {
+    let score = 0;
+    for(let y=0;y<size;y++){
+      for(let x=0;x<size;x++){
+        if(board[y][x] !== color) continue;
+        for(const [dx,dy] of dirs){
+          let len = 1, open1 = 0, open2 = 0;
+          let nx = x + dx, ny = y + dy;
+          while(inBoard(nx,ny) && board[ny][nx] === color){ len++; nx += dx; ny += dy; }
+          if(inBoard(nx,ny) && board[ny][nx] === 0) open1 = 1;
+          nx = x - dx; ny = y - dy;
+          while(inBoard(nx,ny) && board[ny][nx] === color){ len++; nx -= dx; ny -= dy; }
+          if(inBoard(nx,ny) && board[ny][nx] === 0) open2 = 1;
+          if(len >= 5) score += 1200;
+          else if(len === 4 && open1 + open2 > 0) score += 260;
+          else if(len === 3 && open1 + open2 === 2) score += 90;
+          else if(len === 3) score += 40;
+          else if(len === 2) score += 10;
+        }
+      }
+    }
+    return score;
+  };
+  return {black: black + bonus(1), white: white + bonus(2)};
+}
+
+function isLegalMove(x,y){
+  return inBoard(x,y) && board[y][x] === 0;
+}
+
+function makeMove(x,y,isAi=false){
   if(gameOver || aiThinking) return false;
-  if(isPass){
-    saveHistory(); consecutivePasses++; lastMove=null; ko=null; turn=3-turn; updateUI(); renderStones();
-    if(consecutivePasses>=2) endGame(); else if(mode==='pve' && turn===aiColor) setTimeout(aiMove,250);
-    return true;
-  }
-  const leg=isLegalMove(x,y,turn); if(!leg) return false;
+  if(mode === 'pve' && !isAi && turn !== playerColor) return false;
+  if(!isLegalMove(x,y)) return false;
+
   saveHistory();
-  board[y][x]=turn; let caps=0, capsPos=[];
-  const opp=3-turn;
-  for(const [nx,ny] of neighbors(x,y)){ if(!inBoard(nx,ny) || board[ny][nx]!==opp) continue; const g=getGroup(nx,ny); if(g.liberties===0){ for(const s of g.stones){ board[s.y][s.x]=0; capsPos.push(s);} caps+=g.stones.length; } }
-  captures[turn]+=caps;
-  if(capsPos.length===1 && leg.own.stones.length===1 && leg.own.liberties===1) ko={x:capsPos[0].x, y:capsPos[0].y}; else ko=null;
-  lastMove={x,y,color:turn}; consecutivePasses=0; playSound(); turn=3-turn;
-  renderStones(); updateUI();
-  if(mode==='pve' && turn===aiColor && !gameOver) setTimeout(aiMove, 350);
+  board[y][x] = turn;
+  lastMove = {x,y,color:turn};
+  playSound(turn);
+
+  const win = checkWinFrom(x,y,turn);
+  if(win){
+    winLine = win;
+    gameOver = true;
+  }else{
+    winLine = null;
+    turn = 3 - turn;
+  }
+
+  renderStones();
+  drawBoard();
+  updateUI();
+
+  if(mode === 'pve' && !gameOver && turn === aiColor){
+    setTimeout(aiMove, difficulty === 'easy' ? 250 : difficulty === 'medium' ? 500 : 750);
+  }
   return true;
 }
 
+function passMove(){
+  return;
+}
+
 function undo(){
-  if(!history.length) return;
-  const h=history.pop(); board=h.board.map(r=>r.slice()); captures={...h.captures}; ko=h.ko?{...h.ko}:null; turn=h.turn; lastMove=h.lastMove?{...h.lastMove}:null; consecutivePasses=h.consecutivePasses; gameOver=false;
-}
-
-function undoMove(){
-  if(aiThinking) return;
-  if(mode==='pve'){ undo(); undo(); } else { undo(); }
-  renderStones(); drawBoard(); updateUI(); $('ai-thinking').style.display='none'; aiThinking=false;
-  if(mode==='pve' && turn===aiColor && !gameOver) setTimeout(aiMove,250);
-}
-
-function passMove(){ makeMove(null,null,true); }
-
-function endGame(){
-  gameOver=true; aiThinking=false; $('ai-thinking').style.display='none';
-  const sc=estimateScore(); const diff=sc.black - sc.white;
-  const result = Math.abs(diff)<0.01 ? '무승부' : diff>0 ? `흑 ${diff.toFixed(1)}집 승` : `백 ${(-diff).toFixed(1)}집 승`;
-  $('estimate').innerHTML = `<strong>게임 종료</strong> · ${result} (흑 ${sc.black.toFixed(1)} : 백 ${sc.white.toFixed(1)})`;
-  $('turn-indicator').textContent='종료';
+  if(aiThinking || !history.length) return;
+  if(mode === 'pve'){
+    const currentTurn = turn;
+    const steps = (currentTurn === playerColor && history.length >= 2) ? 2 : 1;
+    for(let i=0;i<steps;i++){
+      const h = history.pop();
+      if(!h) break;
+      board = clone(h.board);
+      turn = h.turn;
+      lastMove = h.lastMove ? {...h.lastMove} : null;
+      gameOver = h.gameOver;
+      winLine = h.winLine ? {...h.winLine} : null;
+    }
+  }else{
+    const h = history.pop();
+    if(!h) return;
+    board = clone(h.board);
+    turn = h.turn;
+    lastMove = h.lastMove ? {...h.lastMove} : null;
+    gameOver = h.gameOver;
+    winLine = h.winLine ? {...h.winLine} : null;
+  }
+  renderStones();
+  drawBoard();
+  updateUI();
+  $('ai-thinking').style.display = 'none';
+  aiThinking = false;
 }
 
 function newGame(){
-  board=Array.from({length:size},()=>Array(size).fill(0));
-  turn=1; captures={1:0,2:0}; ko=null; lastMove=null; history=[]; consecutivePasses=0; gameOver=false; aiThinking=false;
-  $('ai-thinking').style.display='none';
-  drawBoard(); renderStones(); updateUI();
-  if(mode==='pve' && playerColor===2) setTimeout(aiMove,400);
-}
-
-function onBoardPointer(e){
-  if(gameOver || aiThinking) return;
-  if(mode==='pve' && turn!==playerColor) return;
-  const rect=boardCanvas.getBoundingClientRect(); const x=e.clientX - rect.left, y=e.clientY - rect.top;
-  const gx=Math.round((x - margin)/cellSize), gy=Math.round((y - margin)/cellSize);
-  if(!inBoard(gx,gy)) return;
-  const dx=Math.abs(x - (margin+gx*cellSize)), dy=Math.abs(y - (margin+gy*cellSize));
-  if(dx>cellSize*0.48 || dy>cellSize*0.48) return;
-  makeMove(gx,gy,false);
-}
-
-function getLegalMoves(color){
-  const moves=[];
-  for(let y=0;y<size;y++) for(let x=0;x<size;x++) if(board[y][x]===0){
-    const leg=isLegalMove(x,y,color); if(leg) moves.push({x,y,leg});
+  board = Array.from({length:size}, () => Array(size).fill(0));
+  turn = 1;
+  lastMove = null;
+  history = [];
+  gameOver = false;
+  aiThinking = false;
+  winLine = null;
+  $('ai-thinking').style.display = 'none';
+  drawBoard();
+  renderStones();
+  updateUI();
+  if(mode === 'pve' && playerColor === 2){
+    setTimeout(aiMove, 350);
   }
-  return moves;
+}
+
+function chooseAIMove(){
+  const moves = [];
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(board[y][x] === 0) moves.push({x,y});
+    }
+  }
+  if(!moves.length) return null;
+
+  const center = (size - 1) / 2;
+  let best = [];
+  let bestScore = -1e18;
+
+  const evalMove = (x,y,color) => {
+    board[y][x] = color;
+    const win = checkWinFrom(x,y,color);
+    let score = 0;
+    if(win) score += 50000;
+
+    const dirs2 = [[1,0],[0,1],[1,1],[1,-1]];
+    for(const [dx,dy] of dirs2){
+      let len = 1, openEnds = 0;
+      let nx = x + dx, ny = y + dy;
+      while(inBoard(nx,ny) && board[ny][nx] === color){ len++; nx += dx; ny += dy; }
+      if(inBoard(nx,ny) && board[ny][nx] === 0) openEnds++;
+      nx = x - dx; ny = y - dy;
+      while(inBoard(nx,ny) && board[ny][nx] === color){ len++; nx -= dx; ny -= dy; }
+      if(inBoard(nx,ny) && board[ny][nx] === 0) openEnds++;
+
+      if(len >= 5) score += 15000;
+      else if(len === 4 && openEnds === 2) score += 8000;
+      else if(len === 4 && openEnds === 1) score += 2500;
+      else if(len === 3 && openEnds === 2) score += 1200;
+      else if(len === 3 && openEnds === 1) score += 500;
+      else if(len === 2 && openEnds === 2) score += 150;
+    }
+
+    const dist = Math.abs(x - center) + Math.abs(y - center);
+    score += (size * 2 - dist) * 1.4;
+
+    const opp = 3 - color;
+    for(const [dx,dy] of dirs2){
+      let len = 1, openEnds = 0;
+      let nx = x + dx, ny = y + dy;
+      while(inBoard(nx,ny) && board[ny][nx] === opp){ len++; nx += dx; ny += dy; }
+      if(inBoard(nx,ny) && board[ny][nx] === 0) openEnds++;
+      nx = x - dx; ny = y - dy;
+      while(inBoard(nx,ny) && board[ny][nx] === opp){ len++; nx -= dx; ny -= dy; }
+      if(inBoard(nx,ny) && board[ny][nx] === 0) openEnds++;
+
+      if(len === 4 && openEnds > 0) score += 7000;
+      else if(len === 3 && openEnds === 2) score += 2000;
+      else if(len === 3 && openEnds === 1) score += 800;
+      else if(len === 2 && openEnds === 2) score += 200;
+    }
+
+    board[y][x] = 0;
+    return score;
+  };
+
+  for(const m of moves){
+    let score = evalMove(m.x, m.y, aiColor);
+
+    if(difficulty === 'easy'){
+      score += Math.random() * 20;
+    }else if(difficulty === 'hard'){
+      const oppScore = evalMove(m.x, m.y, playerColor);
+      score += oppScore * 0.82;
+      const edgePenalty = (m.x === 0 || m.y === 0 || m.x === size-1 || m.y === size-1) ? -35 : 0;
+      score += edgePenalty;
+    }
+
+    if(score > bestScore){
+      bestScore = score;
+      best = [m];
+    }else if(score === bestScore){
+      best.push(m);
+    }
+  }
+
+  if(difficulty === 'hard' && history.length > size * size * 0.62){
+    const est = estimatePosition();
+    const aiEst = aiColor === 1 ? est.black : est.white;
+    const opEst = aiColor === 1 ? est.white : est.black;
+    if(aiEst < opEst - 12 && bestScore < 400) return null;
+  }
+
+  return best[Math.floor(Math.random() * best.length)];
 }
 
 function aiMove(){
   if(gameOver) return;
-  aiThinking=true; $('ai-thinking').style.display='block';
-  setTimeout(()=>{
-    const move=chooseAIMove(); aiThinking=false; $('ai-thinking').style.display='none';
-    if(!move){ passMove(); return; }
-    makeMove(move.x, move.y, false);
-  }, difficulty==='easy'?280: difficulty==='medium'?560:820);
+  aiThinking = true;
+  $('ai-thinking').style.display = 'block';
+  setTimeout(() => {
+    const move = chooseAIMove();
+    aiThinking = false;
+    $('ai-thinking').style.display = 'none';
+    if(!move){
+      turn = 3 - turn;
+      updateUI();
+      return;
+    }
+    makeMove(move.x, move.y, true);
+  }, difficulty === 'easy' ? 220 : difficulty === 'medium' ? 500 : 780);
 }
 
-function chooseAIMove(){
-  const moves=getLegalMoves(aiColor); if(!moves.length) return null;
-  if(difficulty==='easy'){
-    const caps=moves.filter(m=>m.leg.captured.length>0);
-    if(caps.length){ caps.sort((a,b)=>b.leg.captured.length-a.leg.captured.length); const top=caps[0].leg.captured.length; const best=caps.filter(m=>m.leg.captured.length===top); return best[Math.floor(Math.random()*best.length)]; }
-    return moves[Math.floor(Math.random()*moves.length)];
-  }
-  let bestScore=-1e9, best=[];
-  for(const m of moves){
-    let score=0; const caps=m.leg.captured.length; score+=caps*100;
-    for(const [nx,ny] of neighbors(m.x,m.y)){ if(!inBoard(nx,ny)) continue; const c=board[ny][nx];
-      if(c===aiColor){ const g=getGroup(nx,ny); if(g && g.liberties<=2) score+=48; }
-      else if(c===3-aiColor){ const g=getGroup(nx,ny); if(g){ if(g.liberties===1) score+=30; else if(g.liberties===2) score+=24; } }
-    }
-    const center=(size-1)/2; const dist=Math.abs(m.x-center)+Math.abs(m.y-center); score += (size*2 - dist)*0.7;
-    if(difficulty==='hard'){
-      if(m.leg.own.liberties===1) score-=110;
-      let empty=0; for(const [nx,ny] of neighbors(m.x,m.y)) if(inBoard(nx,ny) && board[ny][nx]===0) empty++; score+=empty*2.2;
-      if(history.length<18 && (m.x===0||m.y===0||m.x===size-1||m.y===size-1)) score-=9;
-    }
-    if(score>bestScore){bestScore=score; best=[m];} else if(score===bestScore){best.push(m);}
-  }
-  if(difficulty==='hard' && history.length > size*size*0.65){
-    const sc=estimateScore(); const aiS=aiColor===1?sc.black:sc.white; const opS=aiColor===1?sc.white:sc.black;
-    if(aiS < opS - 6 && bestScore < 35) return null;
-  }
-  return best[Math.floor(Math.random()*best.length)];
+function onBoardPointer(e){
+  if(gameOver || aiThinking) return;
+  if(mode === 'pve' && turn !== playerColor) return;
+  const rect = boardCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const gx = Math.round((x - margin) / cellSize);
+  const gy = Math.round((y - margin) / cellSize);
+  if(!inBoard(gx,gy)) return;
+  const px = margin + gx * cellSize;
+  const py = margin + gy * cellSize;
+  if(Math.abs(x - px) > cellSize * 0.48 || Math.abs(y - py) > cellSize * 0.48) return;
+  makeMove(gx,gy,false);
 }
 
-// UI bindings
-document.querySelectorAll('.size-btn').forEach(b=>b.onclick=()=>{ document.querySelectorAll('.size-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); size=parseInt(b.dataset.size); newGame(); });
-$('pvp-btn').onclick=()=>{ mode='pvp'; $('pvp-btn').classList.add('active'); $('pve-btn').classList.remove('active'); $('ai-panel').style.display='none'; newGame(); };
-$('pve-btn').onclick=()=>{ mode='pve'; $('pve-btn').classList.add('active'); $('pvp-btn').classList.remove('active'); $('ai-panel').style.display='flex'; newGame(); };
-$('choose-black').onclick=()=>{ playerColor=1; aiColor=2; $('choose-black').classList.add('active'); $('choose-white').classList.remove('active'); newGame(); };
-$('choose-white').onclick=()=>{ playerColor=2; aiColor=1; $('choose-white').classList.add('active'); $('choose-black').classList.remove('active'); newGame(); };
-$('difficulty').onchange=e=>difficulty=e.target.value;
-$('pass-btn').onclick=passMove; $('undo-btn').onclick=undoMove; $('newgame-btn').onclick=newGame;
-$('show-last').onchange=e=>{showLast=e.target.checked; renderStones();};
-$('show-coords').onchange=e=>{showCoords=e.target.checked; drawBoard(); renderStones();};
+document.querySelectorAll('.size-btn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.size-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    size = parseInt(b.dataset.size, 10);
+    newGame();
+  };
+});
+
+$('pvp-btn').onclick = () => {
+  mode = 'pvp';
+  $('pvp-btn').classList.add('active');
+  $('pve-btn').classList.remove('active');
+  $('ai-panel').style.display = 'none';
+  newGame();
+};
+
+$('pve-btn').onclick = () => {
+  mode = 'pve';
+  $('pve-btn').classList.add('active');
+  $('pvp-btn').classList.remove('active');
+  $('ai-panel').style.display = 'flex';
+  newGame();
+};
+
+$('choose-black').onclick = () => {
+  playerColor = 1;
+  aiColor = 2;
+  $('choose-black').classList.add('active');
+  $('choose-white').classList.remove('active');
+  newGame();
+};
+
+$('choose-white').onclick = () => {
+  playerColor = 2;
+  aiColor = 1;
+  $('choose-white').classList.add('active');
+  $('choose-black').classList.remove('active');
+  newGame();
+};
+
+$('difficulty').onchange = e => difficulty = e.target.value;
+$('undo-btn').onclick = undo;
+$('newgame-btn').onclick = newGame;
+$('reset-btn').onclick = () => {
+  if(confirm('게임 설정은 유지하고 판만 초기화할까?')) newGame();
+};
+$('show-last').onchange = e => { showLast = e.target.checked; renderStones(); drawBoard(); };
+$('show-coords').onchange = e => { showCoords = e.target.checked; drawBoard(); renderStones(); };
+
 boardWrap.addEventListener('pointerdown', onBoardPointer);
-window.addEventListener('resize', ()=>{ drawBoard(); renderStones(); });
+window.addEventListener('resize', () => { drawBoard(); renderStones(); });
 
-$('start-btn').onclick=()=>{ $('intro').style.display='none'; newGame(); };
+$('start-btn').onclick = () => {
+  $('intro').style.display = 'none';
+  newGame();
+};
 
-// init
-(function init(){ newGame(); })();
+(function init(){
+  newGame();
+})();
 </script>
 </body>
 </html>
