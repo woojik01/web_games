@@ -6,43 +6,51 @@
     <title>web game library</title>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        h1 { color: #333; }
+        h1 { color: #333; margin-bottom: 10px; }
         #searchBar { width: 100%; max-width: 400px; padding: 12px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
         #gameContainer { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; width: 100%; max-width: 800px; }
         .game-card { background: white; padding: 15px; text-align: center; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; cursor: pointer; text-decoration: none; color: #333; font-weight: bold; }
         .game-card:hover { transform: translateY(-5px); background-color: #eef2ff; color: #4f46e5; }
         .hidden { display: none; }
 
-        /* PWA 설치 알림 배너 스타일 */
+        /* PWA 설치 알림 배너 스타일 (제목 아래 고정) */
         #pwa-install-banner {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #333;
-            color: #fff;
-            padding: 15px 20px;
-            border-radius: 30px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 400px;
+            background-color: #ffffff;
+            color: #333;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
-            gap: 15px;
-            z-index: 1000;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
             font-size: 14px;
-            transition: opacity 0.3s ease, transform 0.3s ease;
         }
         #pwa-install-banner.hidden {
             display: none;
+        }
+        .banner-text {
+            font-weight: 500;
+        }
+        .banner-buttons {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         #install-btn {
             background-color: #4f46e5;
             color: white;
             border: none;
-            padding: 8px 16px;
-            border-radius: 20px;
+            padding: 6px 12px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
-            font-size: 13px;
+            font-size: 12px;
+            white-space: nowrap;
         }
         #install-btn:hover {
             background-color: #4338ca;
@@ -50,9 +58,13 @@
         #close-banner-btn {
             background: none;
             border: none;
-            color: #ccc;
+            color: #9ca3af;
             cursor: pointer;
             font-size: 16px;
+            padding: 4px;
+        }
+        #close-banner-btn:hover {
+            color: #4b5563;
         }
     </style>
     <link rel="manifest" href="manifest.json">
@@ -74,15 +86,17 @@
 
     <h1>Web Game Library</h1>
 
+    <div id="pwa-install-banner" class="hidden">
+        <span class="banner-text">📱 앱으로 편하게 설치하기</span>
+        <div class="banner-buttons">
+            <button id="install-btn">설치</button>
+            <button id="close-banner-btn" onclick="dismissBanner()">✕</button>
+        </div>
+    </div>
+
     <input type="text" id="searchBar" placeholder="게임 이름을 검색하세요..." onkeyup="filterGames()">
 
     <div id="gameContainer"></div>
-
-    <div id="pwa-install-banner" class="hidden">
-        <span>앱으로 편리하게 게임을 즐겨보세요!</span>
-        <button id="install-btn">앱 설치하기</button>
-        <button id="close-banner-btn" onclick="dismissBanner()">✕</button>
-    </div>
 
     <script>
         // 1. 게임 데이터 설정 (영어이름: URL용, 한글이름: 표시용)
@@ -140,38 +154,33 @@
         const installBanner = document.getElementById('pwa-install-banner');
         const installBtn = document.getElementById('install-btn');
 
-        // 브라우저가 PWA 설치가 가능하다고 판단했을 때 이벤트 발생
+        // 브라우저가 PWA 설치 조건 충족 시 호출
         window.addEventListener('beforeinstallprompt', (e) => {
-            // 브라우저 자체 설치 팝업이 뜨는 것을 우선 막음
             e.preventDefault();
-            // 이벤트를 보관해 둠
             deferredPrompt = e;
-            // 숨겨져 있던 커스텀 설치 안내 배너를 보여줌
+            // 제목 아래에 배치된 배너가 드러납니다.
             installBanner.classList.remove('hidden');
         });
 
-        // 설치 버튼 클릭 이벤트
+        // 설치 실행
         installBtn.addEventListener('click', async () => {
             if (!deferredPrompt) return;
             
-            // 저장해 둔 설치 팝업 띄우기
             deferredPrompt.prompt();
             
-            // 사용자의 선택 결과 대기
             const { outcome } = await deferredPrompt.userChoice;
             console.log(`User response to the install prompt: ${outcome}`);
             
-            // 더 이상 사용하지 않으므로 초기화 및 배너 숨김
             deferredPrompt = null;
             installBanner.classList.add('hidden');
         });
 
-        // 닫기(X) 버튼을 누르면 배너를 숨김
+        // 닫기 버튼 누를 시 배너 숨김
         function dismissBanner() {
             installBanner.classList.add('hidden');
         }
 
-        // 이미 설치가 완료되었을 때 실행되는 이벤트
+        // 앱이 이미 설치되었을 때
         window.addEventListener('appinstalled', (evt) => {
             console.log('PWA가 성공적으로 설치되었습니다.');
             installBanner.classList.add('hidden');
