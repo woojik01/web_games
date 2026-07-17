@@ -24,6 +24,15 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 </head>
 <body>
+    <script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js")
+            .then(reg => console.log("Service Worker 등록:", reg.scope))
+            .catch(err => console.error("등록 실패:", err));
+    });
+}
+    </script>
 
     <h1>Web Game Library</h1>
 
