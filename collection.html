@@ -12,26 +12,64 @@
         .game-card { background: white; padding: 15px; text-align: center; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; cursor: pointer; text-decoration: none; color: #333; font-weight: bold; }
         .game-card:hover { transform: translateY(-5px); background-color: #eef2ff; color: #4f46e5; }
         .hidden { display: none; }
+
+        /* PWA 설치 알림 배너 스타일 */
+        #pwa-install-banner {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 1000;
+            font-size: 14px;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        #pwa-install-banner.hidden {
+            display: none;
+        }
+        #install-btn {
+            background-color: #4f46e5;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        #install-btn:hover {
+            background-color: #4338ca;
+        }
+        #close-banner-btn {
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 16px;
+        }
     </style>
     <link rel="manifest" href="manifest.json">
-
-<meta name="theme-color" content="#111111">
-
-<meta name="mobile-web-app-capable" content="yes">
-
-<meta name="apple-mobile-web-app-capable" content="yes">
-
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="theme-color" content="#111111">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
 </head>
 <body>
     <script>
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./service-worker.js")
-            .then(reg => console.log("Service Worker 등록:", reg.scope))
-            .catch(err => console.error("등록 실패:", err));
-    });
-}
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("./service-worker.js")
+                    .then(reg => console.log("Service Worker 등록:", reg.scope))
+                    .catch(err => console.error("등록 실패:", err));
+            });
+        }
     </script>
 
     <h1>Web Game Library</h1>
@@ -39,6 +77,12 @@ if ("serviceWorker" in navigator) {
     <input type="text" id="searchBar" placeholder="게임 이름을 검색하세요..." onkeyup="filterGames()">
 
     <div id="gameContainer"></div>
+
+    <div id="pwa-install-banner" class="hidden">
+        <span>앱으로 편리하게 게임을 즐겨보세요!</span>
+        <button id="install-btn">앱 설치하기</button>
+        <button id="close-banner-btn" onclick="dismissBanner()">✕</button>
+    </div>
 
     <script>
         // 1. 게임 데이터 설정 (영어이름: URL용, 한글이름: 표시용)
@@ -90,6 +134,48 @@ if ("serviceWorker" in navigator) {
 
         // 초기 실행
         displayGames();
+
+        // --- PWA 설치 기능 스크립트 ---
+        let deferredPrompt;
+        const installBanner = document.getElementById('pwa-install-banner');
+        const installBtn = document.getElementById('install-btn');
+
+        // 브라우저가 PWA 설치가 가능하다고 판단했을 때 이벤트 발생
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // 브라우저 자체 설치 팝업이 뜨는 것을 우선 막음
+            e.preventDefault();
+            // 이벤트를 보관해 둠
+            deferredPrompt = e;
+            // 숨겨져 있던 커스텀 설치 안내 배너를 보여줌
+            installBanner.classList.remove('hidden');
+        });
+
+        // 설치 버튼 클릭 이벤트
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            
+            // 저장해 둔 설치 팝업 띄우기
+            deferredPrompt.prompt();
+            
+            // 사용자의 선택 결과 대기
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to the install prompt: ${outcome}`);
+            
+            // 더 이상 사용하지 않으므로 초기화 및 배너 숨김
+            deferredPrompt = null;
+            installBanner.classList.add('hidden');
+        });
+
+        // 닫기(X) 버튼을 누르면 배너를 숨김
+        function dismissBanner() {
+            installBanner.classList.add('hidden');
+        }
+
+        // 이미 설치가 완료되었을 때 실행되는 이벤트
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('PWA가 성공적으로 설치되었습니다.');
+            installBanner.classList.add('hidden');
+        });
     </script>
 </body>
 </html>
