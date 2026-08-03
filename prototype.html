@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Parasite Prototype</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.2);
+            border: 2px solid #333;
+            touch-action: none;
+        }
+
+        canvas {
+            background-color: #1a1a1a;
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px #000;
+            z-index: 5;
+        }
+
+        .stat-bar {
+            width: 160px;
+            height: 12px;
+            background-color: #444;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 5px;
+            border: 1px solid #555;
+        }
+
+        .stat-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.1s ease;
+        }
+
+        #hp-fill { background-color: #ff4757; }
+        #host-hp-fill { background-color: #2ed573; }
+
+        /* 터치 컨트롤 (가상 조이스틱 & 버튼) */
+        .touch-zone {
+            position: absolute;
+            bottom: 20px;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            touch-action: none;
+            z-index: 10;
+        }
+
+        #move-zone { left: 20px; }
+        #aim-zone { right: 20px; }
+
+        .joystick-stick {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.4);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        #eject-btn {
+            position: absolute;
+            bottom: 155px;
+            right: 25px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: rgba(255, 71, 87, 0.6);
+            border: 2px solid #ff4757;
+            color: #fff;
+            font-weight: bold;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            touch-action: none;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        #eject-btn:active {
+            background-color: rgba(255, 71, 87, 0.9);
+            transform: scale(0.95);
+        }
+
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 20;
+        }
+
+        #game-over.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        h1 {
+            color: #2ed573;
+            margin-bottom: 10px;
+            font-size: 36px;
+        }
+
+        p {
+            margin: 5px 0;
+            color: #ccc;
+        }
+
+        button.restart-style {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #2ed573;
+            border: none;
+            border-radius: 5px;
+            color: #111;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        button.restart-style:hover {
+            background-color: #26af5f;
+            transform: scale(1.05);
+        }
+
+        #controls-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+        <div>본체(기생충) 체력:</div>
+        <div class="stat-bar"><div id="hp-fill" class="stat-fill"></div></div>
+        <div id="host-ui" style="display: none;">
+            <div>숙주 체력:</div>
+            <div class="stat-bar"><div id="host-hp-fill" class="stat-fill"></div></div>
+            <div>현재 폼: <span id="host-type-text" style="font-weight: bold; color: #2ed573;">-</span></div>
+        </div>
+        <div style="margin-top: 10px;">처치한 적: <span id="score-text">0</span></div>
+    </div>
+
+    <div id="move-zone" class="touch-zone">
+        <div id="move-stick" class="joystick-stick"></div>
+    </div>
+    <div id="aim-zone" class="touch-zone">
+        <div id="aim-stick" class="joystick-stick"></div>
+    </div>
+    <div id="eject-btn">탈출</div>
+
+    <div id="game-over">
+        <h1>GAME OVER</h1>
+        <p>기생충이 생존하지 못했습니다.</p>
+        <p>최종 스코어: <span id="final-score">0</span></p>
+        <button id="restart-btn" class="restart-style">다시 시작</button>
+    </div>
+</div>
+<div id="controls-info">
+    <b>PC:</b> WASD(이동) | 마우스(조준/사격) | Spacebar(탈출)<br>
+    <b>모바일:</b> 좌측 조이스틱(이동) | 우측 조이스틱(조준/사격) | [탈출] 버튼
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI 엘리먼트
+    const hpFill = document.getElementById('hp-fill');
+    const hostHpFill = document.getElementById('host-hp-fill');
+    const hostUi = document.getElementById('host-ui');
+    const hostTypeText = document.getElementById('host-type-text');
+    const scoreText = document.getElementById('score-text');
+    const finalScoreText = document.getElementById('final-score');
+    const gameOverScreen = document.getElementById('game-over');
+    const restartBtn = document.getElementById('restart-btn');
+    const ejectBtn = document.getElementById('eject-btn');
+
+    // 화면 크기 맞춤 (반응형 대응)
+    function resizeCanvas() {
+        const maxWidth = Math.min(window.innerWidth - 20, 800);
+        const maxHeight = Math.min(window.innerHeight - 80, 600);
+        canvas.width = maxWidth;
+        canvas.height = maxHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // 게임 상태
+    let keys = {};
+    let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
+    let isMouseDown = false;
+    let score = 0;
+    let isGameOver = false;
+
+    // 조이스틱 상태
+    let moveInput = { x: 0, y: 0 };
+    let aimInput = { x: 0, y: 0 };
+    let isAiming = false;
+
+    // 적 유형 정의
+    const ENEMY_TYPES = {
+        FAST: {
+            name: '스피더 (근접/고속)',
+            color: '#eccc68',
+            radius: 12,
+            speed: 3.5,
+            hp: 30,
+            attackType: 'MELEE',
+            cooldown: 20
+        },
+        TANK: {
+            name: '탱커 (산탄/고체력)',
+            color: '#ff6b81',
+            radius: 22,
+            speed: 1.2,
+            hp: 120,
+            attackType: 'SHOTGUN',
+            cooldown: 45
+        },
+        RANGED: {
+            name: '슈터 (원거리/원사)',
+            color: '#70a1ff',
+            radius: 15,
+            speed: 2.0,
+            hp: 50,
+            attackType: 'SHOOT',
+            cooldown: 15
+        }
+    };
+
+    // 플레이어 클래스
+    class Player {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.radius = 8;
+            this.speed = 4;
+            this.hp = 100;
+            this.maxHp = 100;
+            
+            // 숙주 관련
+            this.host = null; // null이면 유충 형태
+            this.attackCooldown = 0;
+            this.aimAngle = 0;
+        }
+
+        update() {
+            // 이동 처리 (키보드 또는 조이스틱 입력)
+            let moveX = moveInput.x;
+            let moveY = moveInput.y;
+
+            if (keys['KeyW'] || keys['ArrowUp']) moveY -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveY += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+            // 벡터 정규화
+            const len = Math.hypot(moveX, moveY);
+            if (len > 1) {
+                moveX /= len;
+                moveY /= len;
+            }
+
+            const currentSpeed = this.host ? this.host.type.speed : this.speed;
+            this.x += moveX * currentSpeed;
+            this.y += moveY * currentSpeed;
+
+            // 맵 경계 제한
+            const currentRadius = this.host ? this.host.type.radius : this.radius;
+            this.x = Math.max(currentRadius, Math.min(canvas.width - currentRadius, this.x));
+            this.y = Math.max(currentRadius, Math.min(canvas.height - currentRadius, this.y));
+
+            // 공격 쿨다운 감소
+            if (this.attackCooldown > 0) this.attackCooldown--;
+
+            // 조준 각도 계산
+            if (isAiming) {
+                this.aimAngle = Math.atan2(aimInput.y, aimInput.x);
+            } else {
+                this.aimAngle = Math.atan2(mousePos.y - this.y, mousePos.x - this.x);
+            }
+
+            // 공격 실행 (마우스 클릭 또는 오른쪽 조이스틱 입력 시)
+            if ((isMouseDown || isAiming) && this.attackCooldown <= 0) {
+                this.attack();
+            }
+
+            // 숙주 상태 업데이트
+            if (this.host && this.host.hp <= 0) {
+                this.ejectHost();
+            }
+        }
+
+        attack() {
+            const angle = this.aimAngle;
+
+            if (!this.host) {
+                // 기생충 상태: 약한 기본 발사체
+                bullets.push(new Bullet(this.x, this.y, angle, 6, 10, '#ff4757', false));
+                this.attackCooldown = 15;
+            } else {
+                // 숙주 능력 사용
+                const type = this.host.type.attackType;
+                if (type === 'MELEE') {
+                    bullets.push(new Bullet(this.x, this.y, angle, 12, 35, '#eccc68', false, 15));
+                    this.attackCooldown = this.host.type.cooldown;
+                } else if (type === 'SHOOT') {
+                    bullets.push(new Bullet(this.x, this.y, angle, 10, 20, '#70a1ff', false));
+                    this.attackCooldown = this.host.type.cooldown;
+                } else if (type === 'SHOTGUN') {
+                    for (let i = -2; i <= 2; i++) {
+                        const spreadAngle = angle + (i * 0.15);
+                        bullets.push(new Bullet(this.x, this.y, spreadAngle, 8, 15, '#ff6b81', false, 25));
+                    }
+                    this.attackCooldown = this.host.type.cooldown;
+                }
+            }
+        }
+
+        infest(enemy) {
+            this.host = {
+                type: enemy.type,
+                hp: enemy.type.hp,
+                maxHp: enemy.type.hp
+            };
+            this.x = enemy.x;
+            this.y = enemy.y;
+            updateUI();
+        }
+
+        ejectHost() {
+            if (this.host) {
+                this.host = null;
+                this.attackCooldown = 20;
+                updateUI();
+            }
+        }
+
+        takeDamage(amount) {
+            if (this.host) {
+                this.host.hp -= amount;
+                if (this.host.hp <= 0) {
+                    this.ejectHost();
+                }
+            } else {
+                this.hp -= amount;
+                if (this.hp <= 0) {
+                    this.hp = 0;
+                    gameOver();
+                }
+            }
+            updateUI();
+        }
+
+        draw() {
+            if (this.host) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.host.type.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.host.type.color;
+                ctx.fill();
+                ctx.strokeStyle = '#2ed573';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.closePath();
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#2ed573';
+                ctx.fill();
+                ctx.closePath();
+            } else {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#2ed573';
+                ctx.fill();
+                ctx.closePath();
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + 2, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(46, 213, 115, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+            }
+
+            // 조준선
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + Math.cos(this.aimAngle) * 20, this.y + Math.sin(this.aimAngle) * 20);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    }
+
+    // 적 클래스
+    class Enemy {
+        constructor(x, y, type) {
+            this.x = x;
+            this.y = y;
+            this.type = type;
+            this.hp = type.hp;
+            this.maxHp = type.hp;
+            this.attackCooldown = 0;
+        }
+
+        update() {
+            const angle = Math.atan2(player.y - this.y, player.x - this.x);
+            this.x += Math.cos(angle) * this.type.speed;
+            this.y += Math.sin(angle) * this.type.speed;
+
+            if (this.attackCooldown > 0) this.attackCooldown--;
+
+            const dist = Math.hypot(player.x - this.x, player.y - this.y);
+
+            if (this.type.attackType === 'MELEE') {
+                if (dist < this.type.radius + (player.host ? player.host.type.radius : player.radius)) {
+                    player.takeDamage(10);
+                    this.attackCooldown = 40;
+                }
+            } else if (this.attackCooldown <= 0 && dist < 300) {
+                if (this.type.attackType === 'SHOOT') {
+                    bullets.push(new Bullet(this.x, this.y, angle, 5, 8, '#ff4757', true));
+                    this.attackCooldown = this.type.cooldown;
+                } else if (this.type.attackType === 'SHOTGUN') {
+                    for (let i = -1; i <= 1; i++) {
+                        bullets.push(new Bullet(this.x, this.y, angle + (i * 0.2), 5, 6, '#ff4757', true));
+                    }
+                    this.attackCooldown = this.type.cooldown;
+                }
+            }
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.type.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.type.color;
+            ctx.fill();
+            ctx.closePath();
+
+            if (this.hp < this.maxHp) {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(this.x - 15, this.y - this.type.radius - 8, 30, 4);
+                ctx.fillStyle = '#ff4757';
+                ctx.fillRect(this.x - 15, this.y - this.type.radius - 8, (this.hp / this.maxHp) * 30, 4);
+            }
+        }
+    }
+
+    // 시체 클래스
+    class Corpse {
+        constructor(x, y, type) {
+            this.x = x;
+            this.y = y;
+            this.type = type;
+            this.radius = type.radius;
+            this.decayTimer = 300;
+        }
+
+        update() {
+            this.decayTimer--;
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#555';
+            ctx.fill();
+            ctx.strokeStyle = this.type.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+
+            if (Math.floor(Date.now() / 200) % 2 === 0) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + 4, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(46, 213, 115, 0.8)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.closePath();
+            }
+        }
+    }
+
+    // 탄환 클래스
+    class Bullet {
+        constructor(x, y, angle, speed, damage, color, isEnemy, maxDist = 1000) {
+            this.x = x;
+            this.y = y;
+            this.startX = x;
+            this.startY = y;
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+            this.damage = damage;
+            this.color = color;
+            this.isEnemy = isEnemy;
+            this.maxDist = maxDist;
+            this.radius = 4;
+            this.markedForRemoval = false;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+
+            if (Math.hypot(this.x - this.startX, this.y - this.startY) > this.maxDist) {
+                this.markedForRemoval = true;
+            }
+
+            if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                this.markedForRemoval = true;
+            }
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+            ctx.closePath();
+        }
+    }
+
+    // 글로벌 변수
+    let player;
+    let enemies = [];
+    let corpses = [];
+    let bullets = [];
+    let spawnTimer = 0;
+
+    function init() {
+        player = new Player(canvas.width / 2, canvas.height / 2);
+        enemies = [];
+        corpses = [];
+        bullets = [];
+        score = 0;
+        spawnTimer = 0;
+        isGameOver = false;
+
+        updateUI();
+        gameOverScreen.classList.remove('active');
+    }
+
+    function spawnEnemy() {
+        const side = Math.floor(Math.random() * 4);
+        let x, y;
+
+        if (side === 0) { x = Math.random() * canvas.width; y = -20; }
+        else if (side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+        else if (side === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
+        else { x = -20; y = Math.random() * canvas.height; }
+
+        const types = [ENEMY_TYPES.FAST, ENEMY_TYPES.TANK, ENEMY_TYPES.RANGED];
+        const selectedType = types[Math.floor(Math.random() * types.length)];
+
+        enemies.push(new Enemy(x, y, selectedType));
+    }
+
+    function updateUI() {
+        hpFill.style.width = `${(player.hp / player.maxHp) * 100}%`;
+        
+        if (player.host) {
+            hostUi.style.display = 'block';
+            hostHpFill.style.width = `${(player.host.hp / player.host.maxHp) * 100}%`;
+            hostTypeText.textContent = player.host.type.name;
+        } else {
+            hostUi.style.display = 'none';
+        }
+
+        scoreText.textContent = score;
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        finalScoreText.textContent = score;
+        gameOverScreen.classList.add('active');
+    }
+
+    // 메인 루프
+    function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!isGameOver) {
+            spawnTimer++;
+            if (spawnTimer > 100 - Math.min(score, 60)) {
+                spawnEnemy();
+                spawnTimer = 0;
+            }
+
+            player.update();
+
+            // 기생 체크
+            if (!player.host) {
+                for (let i = corpses.length - 1; i >= 0; i--) {
+                    const corpse = corpses[i];
+                    const dist = Math.hypot(player.x - corpse.x, player.y - corpse.y);
+                    if (dist < player.radius + corpse.radius) {
+                        player.infest(corpse);
+                        corpses.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+
+            // 시체 처리
+            for (let i = corpses.length - 1; i >= 0; i--) {
+                corpses[i].update();
+                corpses[i].draw();
+                if (corpses[i].decayTimer <= 0) {
+                    corpses.splice(i, 1);
+                }
+            }
+
+            // 적 처리
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.update();
+                enemy.draw();
+
+                // 총알-적 충돌
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const bullet = bullets[j];
+                    if (!bullet.isEnemy) {
+                        const dist = Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y);
+                        if (dist < enemy.type.radius + bullet.radius) {
+                            enemy.hp -= bullet.damage;
+                            bullet.markedForRemoval = true;
+
+                            if (enemy.hp <= 0) {
+                                corpses.push(new Corpse(enemy.x, enemy.y, enemy.type));
+                                enemies.splice(i, 1);
+                                score++;
+                                updateUI();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 총알 처리
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.update();
+                bullet.draw();
+
+                if (bullet.isEnemy) {
+                    const pRadius = player.host ? player.host.type.radius : player.radius;
+                    const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
+                    if (dist < pRadius + bullet.radius) {
+                        player.takeDamage(bullet.damage);
+                        bullet.markedForRemoval = true;
+                    }
+                }
+
+                if (bullet.markedForRemoval) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            player.draw();
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- 키보드/마우스 이벤트 ---
+    window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if (e.code === 'Space' && player && player.host) {
+            player.ejectHost();
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        keys[e.code] = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mousePos.x = e.clientX - rect.left;
+        mousePos.y = e.clientY - rect.top;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) isMouseDown = true;
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+        if (e.button === 0) isMouseDown = false;
+    });
+
+    restartBtn.addEventListener('click', () => {
+        init();
+    });
+
+    // --- 모바일 가상 조이스틱 터치 이벤트 ---
+    function setupJoystick(zoneId, stickId, inputTarget, onAimingChange) {
+        const zone = document.getElementById(zoneId);
+        const stick = document.getElementById(stickId);
+        let touchId = null;
+
+        zone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (touchId === null) {
+                const touch = e.changedTouches[0];
+                touchId = touch.identifier;
+                updateStick(touch);
+                if (onAimingChange) onAimingChange(true);
+            }
+        }, { passive: false });
+
+        zone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === touchId) {
+                    updateStick(touch);
+                    break;
+                }
+            }
+        }, { passive: false });
+
+        const endTouch = (e) => {
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === touchId) {
+                    touchId = null;
+                    stick.style.transform = `translate(-50%, -50%)`;
+                    inputTarget.x = 0;
+                    inputTarget.y = 0;
+                    if (onAimingChange) onAimingChange(false);
+                    break;
+                }
+            }
+        };
+
+        zone.addEventListener('touchend', endTouch);
+        zone.addEventListener('touchcancel', endTouch);
+
+        function updateStick(touch) {
+            const rect = zone.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            const maxRadius = rect.width / 2;
+            const distance = Math.hypot(dx, dy);
+
+            if (distance > maxRadius) {
+                dx = (dx / distance) * maxRadius;
+                dy = (dy / distance) * maxRadius;
+            }
+
+            stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+            
+            // -1 ~ 1 사이로 정규화
+            inputTarget.x = dx / maxRadius;
+            inputTarget.y = dy / maxRadius;
+        }
+    }
+
+    // 가상 조이스틱 설정
+    setupJoystick('move-zone', 'move-stick', moveInput);
+    setupJoystick('aim-zone', 'aim-stick', aimInput, (aiming) => {
+        isAiming = aiming;
+    });
+
+    // 탈출 버튼 터치 이벤트
+    ejectBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (player && player.host) {
+            player.ejectHost();
+        }
+    }, { passive: false });
+
+    // 터치 지원 기기 판별 (안내 문구 보정)
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        document.getElementById('move-zone').style.display = 'block';
+        document.getElementById('aim-zone').style.display = 'block';
+        ejectBtn.style.display = 'flex';
+    }
+
+    // 게임 시작
+    init();
+    gameLoop();
+</script>
+</body>
+</html>
